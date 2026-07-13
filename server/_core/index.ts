@@ -48,6 +48,42 @@ async function startServer() {
   registerStorageProxy(app);
   // Simple health check for the deployment platform.
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
+  // One-time bootstrap: create the first admin account on a fresh database.
+  // Requires the SETUP_SECRET env var AND a matching x-setup-secret header,
+  // and permanently refuses once any admin exists.
+  app.post("/api/setup/first-admin", async (req, res) => {
+    try {
+      const secret = process.env.SETUP_SECRET;
+      if (!secret || req.headers["x-setup-secret"] !== secret) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const db = await import("../db");
+      const all = await db.getAllUsers();
+      if (all.some(u => u.role === "admin")) {
+        return res.status(409).json({ error: "An admin already exists — endpoint disabled" });
+      }
+      const { email, password, name } = req.body ?? {};
+      if (
+        typeof email !== "string" || !email.includes("@") ||
+        typeof password !== "string" || password.length < 8
+      ) {
+        return res.status(400).json({ error: "email and password (min 8 chars) required" });
+      }
+      const { hashPassword } = await import("../emailAuth");
+      const hash = await hashPassword(password);
+      const user = await db.createUserWithPassword({
+        email: email.toLowerCase().trim(),
+        name: typeof name === "string" && name.trim() ? name.trim() : "Admin",
+        passwordHash: hash,
+        role: "admin",
+      });
+      console.log(`[Setup] First admin created: ${user?.email}`);
+      res.json({ ok: true, id: user?.id, email: user?.email, role: user?.role });
+    } catch (e) {
+      console.error("[Setup] first-admin error:", e);
+      res.status(500).json({ error: String(e) });
+    }
+  });
   // Scheduled SOP sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/sop-sync", scheduledSopSyncHandler);
   // Scheduled Library sync endpoint (bi-weekly cron)

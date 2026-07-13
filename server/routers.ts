@@ -277,7 +277,7 @@ const usersRouter = router({
         role: input.role,
       });
       // Send welcome email (non-blocking — don't fail user creation if email fails)
-      const loginUrl = `${input.origin ?? "https://reformhub-vhmkvf2o.manus.space"}/login`;
+      const loginUrl = `${input.origin ?? process.env.PUBLIC_BASE_URL ?? ""}/login`;
       sendWelcomeEmail(
         input.email.toLowerCase().trim(),
         input.name,
