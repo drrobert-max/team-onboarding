@@ -1,0 +1,1 @@
+ALTER TABLE `modules` ADD `quizEnabled` boolean DEFAULT false NOT NULL;

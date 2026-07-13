@@ -1,0 +1,1 @@
+ALTER TABLE `questions` ADD `moduleName` varchar(255);

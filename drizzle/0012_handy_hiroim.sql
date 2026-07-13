@@ -1,0 +1,1 @@
+ALTER TABLE `notifications` MODIFY COLUMN `type` enum('overdue_reminder','quiz_failed','onboarding_complete','sop_updated','approval_needed','account_approved','account_rejected','question_submitted','question_answered','video_submitted','video_reviewed') NOT NULL;
