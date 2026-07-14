@@ -29,6 +29,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  FlaskConical,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -105,6 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: GraduationCap, label: "Tracks", path: "/admin/tracks" },
     { icon: Activity, label: "Activity", path: "/admin/activity" },
     { icon: MessageCircle, label: "Inbox", path: "/admin/submissions" },
+    { icon: FlaskConical, label: "QA", path: "/admin/uat" },
     { icon: Settings, label: "Admin", path: "/admin" },
   ];
 
