@@ -111,20 +111,6 @@ export default function MyTrack() {
     });
   };
 
-  if (!track && !trackQuery.isLoading) {
-    return (
-      <AppLayout>
-        <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-          <div className="text-center py-20">
-            <GraduationCap className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-foreground mb-2">No training track assigned</h2>
-            <p className="text-muted-foreground text-sm">Your admin will assign your role and training track shortly.</p>
-          </div>
-        </div>
-      </AppLayout>
-    );
-  }
-
   // Filter out test-out milestones
   const trainingMilestones = track?.milestones.filter(ms => !isTestOut(ms.title)) ?? [];
 
@@ -155,6 +141,22 @@ export default function MyTrack() {
   }, [searchQuery, trainingMilestones]);
 
   const collapsed = collapsedMilestones ?? new Set<number>();
+
+  // NOTE: keep all hooks above this early return — a return between hooks
+  // changes the hook count across renders and crashes React (#310).
+  if (!track && !trackQuery.isLoading) {
+    return (
+      <AppLayout>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+          <div className="text-center py-20">
+            <GraduationCap className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-foreground mb-2">No training track assigned</h2>
+            <p className="text-muted-foreground text-sm">Your admin will assign your role and training track shortly.</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

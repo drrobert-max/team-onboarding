@@ -65,9 +65,12 @@ export function serveStatic(app: Express) {
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         res.setHeader("Pragma", "no-cache");
         res.setHeader("Expires", "0");
-      } else if (/\.[0-9a-f]{8,}\.(js|css)$/.test(filePath)) {
-        // Vite content-hashed files — safe to cache for 1 year
+      } else if (/[/\\]assets[/\\][^/\\]+\.(js|css|woff2?|png|jpg|webp|svg)$/.test(filePath)) {
+        // Everything under /assets/ is content-hashed by Vite — cache 1 year
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/\.(png|webp|svg|ico|jpg)$/.test(filePath)) {
+        // Un-hashed public images (logo, PWA icons) — cache 1 day
+        res.setHeader("Cache-Control", "public, max-age=86400");
       }
     },
   }));

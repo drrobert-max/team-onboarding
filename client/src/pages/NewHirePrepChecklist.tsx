@@ -103,7 +103,10 @@ export default function NewHirePrepChecklist() {
     { enabled: newHireUserId > 0 }
   );
   const sopsQuery = trpc.admin.getSopsForBinder.useQuery();
-  const upsertMutation = trpc.admin.upsertPrepChecklist.useMutation();
+  const utils = trpc.useUtils();
+  const upsertMutation = trpc.admin.upsertPrepChecklist.useMutation({
+    onSuccess: () => utils.admin.getPrepChecklist.invalidate({ newHireUserId }),
+  });
 
   const newHire = usersQuery.data?.find((u) => u.id === newHireUserId);
 

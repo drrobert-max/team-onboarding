@@ -1,8 +1,8 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "./_core/hooks/useAuth";
-import { lazy, Suspense, useState } from "react";
-import { Route, Switch } from "wouter";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SplashScreen from "./components/SplashScreen";
 import InstallPrompt from "./components/InstallPrompt";
@@ -31,6 +31,17 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const TrackEditor = lazy(() => import("./pages/TrackEditor"));
 const LearningLibrary = lazy(() => import("./pages/LearningLibrary"));
 
+// Reset scroll position on navigation (wouter keeps the previous scroll,
+// which feels broken when moving between long pages). Hash links (#…) keep
+// their in-page anchor behavior.
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    if (!window.location.hash) window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
+
 function RouteFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -42,6 +53,7 @@ function RouteFallback() {
 function Router() {
   return (
     <Suspense fallback={<RouteFallback />}>
+      <ScrollToTop />
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/login" component={Login} />

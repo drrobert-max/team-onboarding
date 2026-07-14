@@ -64,7 +64,7 @@ export default function SplashScreen({ isReady, onDone }: SplashScreenProps) {
         }}
       >
         <img
-          src="/manus-storage/rc-logo_35809274.webp"
+          src="/rc-logo.webp"
           alt="Reformation Chiropractic"
           style={{
             height: "80px",

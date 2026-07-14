@@ -136,7 +136,7 @@ export default function InstallPrompt() {
           }}
         >
           <img
-            src="/manus-storage/rc-logo_35809274.webp"
+            src="/rc-logo.webp"
             alt=""
             style={{ width: "28px", height: "28px", objectFit: "contain", filter: "brightness(0) invert(1)" }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -223,7 +223,7 @@ export default function InstallPrompt() {
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
               <img
-                src="/manus-storage/rc-logo_35809274.webp"
+                src="/rc-logo.webp"
                 alt=""
                 style={{ width: "48px", height: "48px", objectFit: "contain" }}
               />

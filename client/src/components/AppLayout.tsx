@@ -137,7 +137,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 mb-1">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0 overflow-hidden">
               <img
-                src="/manus-storage/rc-logo_35809274.webp"
+                src="/rc-logo.webp"
                 alt="RC"
                 className="w-7 h-7 object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -155,9 +155,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => {
             const active = isActive(item.path);
             return (
-              <button
+              <Link
                 key={item.path}
-                onClick={() => setLocation(item.path)}
+                href={item.path}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
                   active
                     ? "bg-white/20 text-white shadow-sm"
@@ -171,7 +171,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
                 <span>{item.label}</span>
                 {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80" />}
-              </button>
+              </Link>
             );
           })}
         </nav>
@@ -225,7 +225,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl overflow-hidden bg-primary/10 flex items-center justify-center">
               <img
-                src="/manus-storage/rc-logo_35809274.webp"
+                src="/rc-logo.webp"
                 alt="RC"
                 className="w-6 h-6 object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -315,9 +315,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {mobileTabItems.map((item) => {
               const active = isActive(item.path);
               return (
-                <button
+                <Link
                   key={item.path}
-                  onClick={() => setLocation(item.path)}
+                  href={item.path}
                   className="flex-1 flex flex-col items-center justify-center gap-[3px] transition-all active:scale-95"
                 >
                   {/* Icon container — raised square when active */}
@@ -351,7 +351,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   >
                     {item.label}
                   </span>
-                </button>
+                </Link>
               );
             })}
 
@@ -406,9 +406,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {traineeNavItems.slice(4).map((item) => {
                 const active = isActive(item.path);
                 return (
-                  <button
+                  <Link
                     key={item.path}
-                    onClick={() => { setLocation(item.path); setMoreOpen(false); }}
+                    href={item.path}
+                    onClick={() => setMoreOpen(false)}
                     className="flex flex-col items-center gap-2 p-3 rounded-2xl transition-all active:scale-95"
                     style={{
                       background: active ? 'var(--brand-light)' : 'oklch(0.97 0.008 135)',
@@ -427,7 +428,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       />
                     </div>
                     <span className="text-xs font-medium text-foreground">{item.label}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -441,9 +442,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {adminNavItems.map((item) => {
                   const active = isActive(item.path);
                   return (
-                    <button
+                    <Link
                       key={item.path}
-                      onClick={() => { setLocation(item.path); setMoreOpen(false); }}
+                      href={item.path}
+                      onClick={() => setMoreOpen(false)}
                       className="flex flex-col items-center gap-2 p-3 rounded-2xl transition-all active:scale-95"
                       style={{
                         background: active ? 'var(--brand-light)' : 'oklch(0.97 0.008 135)',
@@ -462,7 +464,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         />
                       </div>
                       <span className="text-xs font-medium text-foreground">{item.label}</span>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>

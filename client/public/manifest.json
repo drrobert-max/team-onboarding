@@ -9,13 +9,13 @@
   "theme_color": "#2D5016",
   "icons": [
     {
-      "src": "/manus-storage/pwa-icon-192_16950263.png",
+      "src": "/pwa-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/manus-storage/pwa-icon-512_a64dc96d.png",
+      "src": "/pwa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
