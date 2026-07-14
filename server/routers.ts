@@ -264,6 +264,18 @@ const usersRouter = router({
       teamRole: z.enum(["ca", "associate_doctor", "scan_tech", "preceptor"]).optional(),
       role: z.enum(["user", "admin"]).default("user"),
       origin: z.string().url().optional(),
+    }).superRefine((val, ctx) => {
+      // A trainee with no training role lands on a dead-end screen with nothing
+      // to do, so require a role unless the account is an admin (admins have no
+      // team role by design). This is the server-side guarantee behind the
+      // create-user form's disabled button.
+      if (val.role !== "admin" && !val.teamRole) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["teamRole"],
+          message: "A training role is required for trainees.",
+        });
+      }
     }))
     .mutation(async ({ input }) => {
       const existing = await db.getUserByEmail(input.email.toLowerCase().trim());
