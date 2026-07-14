@@ -120,6 +120,8 @@ async function startServer() {
       createContext,
     })
   );
+  // Public rollout/deployment guide — clean URL redirects to the static page.
+  app.get("/rollout", (_req, res) => res.redirect(302, "/rollout.html"));
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

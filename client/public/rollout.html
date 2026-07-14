@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Step-by-step guide to deploy the Reformation Training Hub to a new clinic — accounts, costs, setup, and content.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
+<title>Training Hub — Rollout Playbook</title>
+<style>
+  /* ─────────────────────────  TOKENS  ───────────────────────── */
+  :root {
+    --ground:      #F4F5EF;
+    --surface:     #FFFFFF;
+    --surface-2:   #ECEEE3;
+    --ink:         #18200F;
+    --ink-soft:    #55604A;
+    --ink-faint:   #7C876E;
+    --line:        #DBDFCF;
+    --line-soft:   #E7EADD;
+    --brand:       #2D5016;
+    --brand-bright:#3E6B22;
+    --gold:        #8A6A1E;
+    --gold-bg:     #F3EBD4;
+    --clay:        #97501F;
+    --clay-bg:     #F4E5D9;
+    --good:        #2D6A2E;
+    --mono-bg:     #EEF0E6;
+    --mono-ink:    #33422A;
+    --shadow:      0 1px 2px rgba(24,32,15,.05), 0 8px 24px -12px rgba(24,32,15,.18);
+
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+    --step--1: .82rem;
+    --step-0: 1rem;
+    --step-1: 1.19rem;
+    --step-2: 1.5rem;
+    --step-3: 2rem;
+    --step-4: 2.7rem;
+    --step-5: clamp(2.6rem, 6vw, 4rem);
+
+    --spine: 46rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:      #11140D;
+      --surface:     #191E12;
+      --surface-2:   #212717;
+      --ink:         #E9ECE0;
+      --ink-soft:    #A3AF96;
+      --ink-faint:   #7C876E;
+      --line:        #2C331F;
+      --line-soft:   #242A18;
+      --brand:       #6FA043;
+      --brand-bright:#8FBE5F;
+      --gold:        #D8B25A;
+      --gold-bg:     #29240F;
+      --clay:        #D98A54;
+      --clay-bg:     #2A1B0F;
+      --good:        #7BC17C;
+      --mono-bg:     #20261634;
+      --mono-ink:    #C4D3B4;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 10px 30px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#11140D; --surface:#191E12; --surface-2:#212717;
+    --ink:#E9ECE0; --ink-soft:#A3AF96; --ink-faint:#7C876E;
+    --line:#2C331F; --line-soft:#242A18;
+    --brand:#6FA043; --brand-bright:#8FBE5F;
+    --gold:#D8B25A; --gold-bg:#29240F; --clay:#D98A54; --clay-bg:#2A1B0F;
+    --good:#7BC17C; --mono-bg:#20261634; --mono-ink:#C4D3B4;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -16px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground:#F4F5EF; --surface:#FFFFFF; --surface-2:#ECEEE3;
+    --ink:#18200F; --ink-soft:#55604A; --ink-faint:#7C876E;
+    --line:#DBDFCF; --line-soft:#E7EADD;
+    --brand:#2D5016; --brand-bright:#3E6B22;
+    --gold:#8A6A1E; --gold-bg:#F3EBD4; --clay:#97501F; --clay-bg:#F4E5D9;
+    --good:#2D6A2E; --mono-bg:#EEF0E6; --mono-ink:#33422A;
+    --shadow:0 1px 2px rgba(24,32,15,.05), 0 8px 24px -12px rgba(24,32,15,.18);
+  }
+
+  /* ─────────────────────────  BASE  ───────────────────────── */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,h2,h3,h4 { text-wrap: balance; line-height: 1.12; }
+  a { color: var(--brand-bright); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--brand); }
+  code, .mono {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--mono-bg);
+    color: var(--mono-ink);
+    padding: .12em .38em;
+    border-radius: 5px;
+    word-break: break-word;
+  }
+  :focus-visible { outline: 2px solid var(--brand-bright); outline-offset: 3px; border-radius: 3px; }
+
+  /* ─────────────────────────  SHELL  ───────────────────────── */
+  .wrap { max-width: 78rem; margin: 0 auto; padding: 0 clamp(1.1rem, 4vw, 3rem); }
+  .layout { display: grid; grid-template-columns: 1fr; gap: 0; }
+  @media (min-width: 1000px) {
+    .layout { grid-template-columns: 15.5rem minmax(0, 1fr); gap: clamp(2rem, 5vw, 5rem); align-items: start; }
+  }
+
+  /* ─────────────────────────  THEME TOGGLE  ───────────────────────── */
+  .toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 60;
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: var(--surface); color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .45rem .8rem; font: 600 .78rem/1 var(--sans);
+    letter-spacing: .02em; cursor: pointer; box-shadow: var(--shadow);
+  }
+  .toggle:hover { color: var(--ink); border-color: var(--brand); }
+
+  /* ─────────────────────────  HERO  ───────────────────────── */
+  .hero { padding: clamp(3.5rem, 9vw, 7rem) 0 clamp(2rem, 5vw, 3.5rem); border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font: 700 .74rem/1 var(--sans); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--brand); display: inline-flex; align-items: center; gap: .55rem;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 2px; background: var(--brand); display: inline-block; }
+  .hero h1 {
+    font-size: var(--step-5); font-weight: 800; letter-spacing: -.02em;
+    margin: 1.1rem 0 0; max-width: 20ch;
+  }
+  .hero .lede {
+    font-family: var(--serif); font-size: clamp(1.2rem, 2.4vw, 1.5rem); line-height: 1.5;
+    color: var(--ink-soft); margin: 1.4rem 0 0; max-width: 40ch;
+  }
+  .hero-meta { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 2rem; }
+  .tag {
+    font: 600 .8rem/1 var(--sans); color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--line);
+    padding: .5rem .8rem; border-radius: 8px;
+  }
+  .tag b { color: var(--ink); font-weight: 700; }
+  .fade { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.2,.7,.3,1) forwards; }
+  .fade:nth-child(2){animation-delay:.06s}.fade:nth-child(3){animation-delay:.12s}.fade:nth-child(4){animation-delay:.18s}
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .fade { animation: none; opacity: 1; transform: none; } }
+
+  /* ─────────────────────────  NAV RAIL  ───────────────────────── */
+  .rail { display: none; }
+  @media (min-width: 1000px) {
+    .rail {
+      display: block; position: sticky; top: 0; padding-top: 2.6rem;
+      max-height: 100vh; overflow-y: auto; font-size: .86rem;
+    }
+    .rail h4 {
+      font: 700 .7rem/1 var(--sans); letter-spacing: .13em; text-transform: uppercase;
+      color: var(--ink-faint); margin: 0 0 .9rem .9rem;
+    }
+    .rail a {
+      display: flex; gap: .6rem; align-items: baseline;
+      padding: .34rem .9rem; color: var(--ink-soft); text-decoration: none;
+      border-left: 2px solid transparent; line-height: 1.3;
+    }
+    .rail a .n { font-family: var(--mono); font-size: .72rem; color: var(--ink-faint); min-width: 1.1rem; }
+    .rail a:hover { color: var(--ink); }
+    .rail a.active { color: var(--brand); border-left-color: var(--brand); font-weight: 600; }
+    .rail a.active .n { color: var(--brand); }
+  }
+
+  /* ─────────────────────────  MAIN / SPINE  ───────────────────────── */
+  main { padding: 2.6rem 0 5rem; min-width: 0; }
+  section { max-width: var(--spine); scroll-margin-top: 1.5rem; }
+  section + section { margin-top: clamp(3rem, 6vw, 4.5rem); }
+  .kicker {
+    display: flex; align-items: baseline; gap: .8rem; margin-bottom: 1.1rem;
+  }
+  .kicker .ord {
+    font-family: var(--mono); font-size: .82rem; font-weight: 600; color: var(--brand);
+    background: var(--surface-2); border: 1px solid var(--line-soft);
+    padding: .2rem .5rem; border-radius: 6px; white-space: nowrap;
+  }
+  h2 { font-size: var(--step-3); font-weight: 800; letter-spacing: -.015em; margin: 0; }
+  h3 { font-size: var(--step-1); font-weight: 700; margin: 2rem 0 .5rem; letter-spacing: -.01em; }
+  p { margin: 0 0 1rem; max-width: 68ch; }
+  .muted { color: var(--ink-soft); }
+  ul, ol { max-width: 66ch; padding-left: 1.3rem; margin: 0 0 1rem; }
+  li { margin: .35rem 0; }
+  li::marker { color: var(--brand); }
+  strong { font-weight: 700; }
+
+  /* ─────────────────────────  CARDS / GRID  ───────────────────────── */
+  .grid { display: grid; gap: 1rem; margin: 1.4rem 0; }
+  @media (min-width: 620px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 1.15rem 1.25rem; box-shadow: var(--shadow);
+  }
+  .card h4 { margin: 0 0 .3rem; font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+  .card p { font-size: .92rem; color: var(--ink-soft); margin: 0; }
+  .card .req { font: 700 .64rem/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; padding: .25rem .45rem; border-radius: 5px; }
+  .req.need { color: var(--brand); background: var(--surface-2); border: 1px solid var(--line); }
+  .req.opt  { color: var(--ink-faint); background: transparent; border: 1px dashed var(--line); }
+
+  /* ─────────────────────────  TABLES  ───────────────────────── */
+  .twrap { overflow-x: auto; margin: 1.4rem 0; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; background: var(--surface); }
+  th, td { text-align: left; padding: .7rem .9rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font: 700 .7rem/1 var(--sans); letter-spacing: .07em; text-transform: uppercase;
+    color: var(--ink-faint); background: var(--surface-2); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--gold); font-weight: 600; }
+  .chip { display: inline-block; font: 700 .66rem/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; padding: .28rem .5rem; border-radius: 999px; }
+  .chip.need { color: #fff; background: var(--brand); }
+  :root[data-theme="dark"] .chip.need, .chip.need { }
+  .chip.opt { color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--line); }
+  tfoot td { font-weight: 700; background: var(--surface-2); }
+
+  /* ─────────────────────────  CALLOUTS  ───────────────────────── */
+  .note { border-radius: 12px; padding: 1rem 1.2rem; margin: 1.4rem 0; font-size: .93rem; border: 1px solid; }
+  .note p:last-child { margin-bottom: 0; }
+  .note .lbl { font: 700 .72rem/1 var(--sans); letter-spacing: .09em; text-transform: uppercase; display: block; margin-bottom: .45rem; }
+  .note.warn { background: var(--clay-bg); border-color: color-mix(in srgb, var(--clay) 40%, transparent); }
+  .note.warn .lbl { color: var(--clay); }
+  .note.cost { background: var(--gold-bg); border-color: color-mix(in srgb, var(--gold) 40%, transparent); }
+  .note.cost .lbl { color: var(--gold); }
+  .note.tip { background: var(--surface); border-color: var(--line); }
+  .note.tip .lbl { color: var(--brand); }
+
+  /* ─────────────────────────  CODE BLOCK  ───────────────────────── */
+  pre {
+    background: var(--mono-bg); color: var(--mono-ink); border: 1px solid var(--line-soft);
+    border-radius: 10px; padding: .95rem 1.1rem; overflow-x: auto; margin: 1.1rem 0;
+    font-family: var(--mono); font-size: .84rem; line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  .cmt { color: var(--ink-faint); }
+
+  /* ─────────────────────────  DIVIDER / FOOTER  ───────────────────────── */
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+  footer { border-top: 1px solid var(--line); margin-top: 4rem; padding: 2.5rem 0 3.5rem; }
+  footer p { font-size: .86rem; color: var(--ink-faint); max-width: none; }
+
+  /* pitch band */
+  .pitch { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: clamp(1.4rem, 4vw, 2.4rem); box-shadow: var(--shadow); }
+  .pitch .quote { font-family: var(--serif); font-size: clamp(1.25rem, 2.6vw, 1.7rem); line-height: 1.4; letter-spacing: -.01em; margin: 0 0 1.2rem; max-width: 30ch; }
+  .pillars { display: grid; gap: .9rem 1.6rem; margin-top: .4rem; }
+  @media (min-width: 620px) { .pillars { grid-template-columns: 1fr 1fr; } }
+  .pillar { display: flex; gap: .7rem; align-items: baseline; }
+  .pillar .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--brand); flex: none; transform: translateY(-1px); }
+  .pillar b { display: block; }
+  .pillar span { font-size: .9rem; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<button class="toggle" id="themeBtn" aria-label="Switch theme">
+  <span id="themeIcon">◐</span><span id="themeLabel">Theme</span>
+</button>
+
+<div class="wrap">
+  <header class="hero">
+    <span class="eyebrow fade">Deployment &amp; rollout playbook</span>
+    <h1 class="fade">Stand up the Training Hub for a new office.</h1>
+    <p class="lede fade">Everything a second clinic needs to run its own copy of the Reformation Training Hub — the accounts to open, what it costs to keep the lights on, the step-by-step deploy, and how to load your own SOPs and videos.</p>
+    <div class="hero-meta fade">
+      <span class="tag"><b>~2–3 hrs</b> first setup</span>
+      <span class="tag"><b>~$10–25</b>/mo to run</span>
+      <span class="tag"><b>No servers</b> to manage</span>
+      <span class="tag"><b>Auto-deploy</b> from GitHub</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- NAV RAIL -->
+    <nav class="rail" aria-label="Sections">
+      <h4>The playbook</h4>
+      <a href="#what"><span class="n">01</span> What you're deploying</a>
+      <a href="#stack"><span class="n">02</span> How it's built</a>
+      <a href="#cost"><span class="n">03</span> What it costs</a>
+      <a href="#accounts"><span class="n">04</span> Accounts to open</a>
+      <a href="#p-code"><span class="n">05</span> Get the code</a>
+      <a href="#p-db"><span class="n">06</span> Database</a>
+      <a href="#p-env"><span class="n">07</span> Configure &amp; deploy</a>
+      <a href="#p-admin"><span class="n">08</span> First admin login</a>
+      <a href="#p-content"><span class="n">09</span> Load your content</a>
+      <a href="#p-custom"><span class="n">10</span> Make it your own</a>
+      <a href="#maint"><span class="n">11</span> Keeping it running</a>
+      <a href="#fit"><span class="n">12</span> Is it right for you?</a>
+    </nav>
+
+    <!-- MAIN -->
+    <main>
+      <section id="what">
+        <div class="kicker"><span class="ord">01</span></div>
+        <h2>What you're deploying</h2>
+        <p>The Training Hub is an internal web app for onboarding and training clinic staff. It's a <strong>Progressive Web App</strong> — staff open it in a browser and can "install" it to their phone's home screen, so it feels like a native app without an App Store.</p>
+        <p class="muted">Out of the box it gives a new office:</p>
+        <div class="grid two">
+          <div class="card"><h4>📋 SOPs that stay current</h4><p>Standard operating procedures pulled straight from your Google Docs — edit the doc, the app updates itself and re-flags staff to re-read.</p></div>
+          <div class="card"><h4>🗺️ Learning tracks</h4><p>Role-based training paths (assistant, associate doctor, scan tech…) with modules, progress tracking, and daily focus prompts.</p></div>
+          <div class="card"><h4>✅ Quizzes &amp; test-outs</h4><p>Auto-generated quizzes per module (optional AI), plus "test out" checkpoints to prove competence.</p></div>
+          <div class="card"><h4>🎥 Video library &amp; submissions</h4><p>A synced library of training videos, plus staff submitting their own technique videos for a preceptor to review and sign off.</p></div>
+        </div>
+        <div class="pitch" style="margin-top:1.6rem">
+          <p class="quote">One place a new hire logs into on day one — and the same place they prove they're ready.</p>
+          <div class="pillars">
+            <div class="pillar"><span class="dot"></span><div><b>You own the data.</b><span>It's your GitHub repo, your database, your Drive — not a rented SaaS seat you lose access to.</span></div></div>
+            <div class="pillar"><span class="dot"></span><div><b>Cheaper than one SaaS license.</b><span>A whole clinic runs for roughly the price of a single seat on most training platforms.</span></div></div>
+            <div class="pillar"><span class="dot"></span><div><b>Content lives in Google.</b><span>Non-technical staff edit SOPs and drop in videos using tools they already know.</span></div></div>
+            <div class="pillar"><span class="dot"></span><div><b>Installs on any phone.</b><span>No app store, no approvals — share a link, staff add it to their home screen.</span></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="kicker"><span class="ord">02</span></div>
+        <h2>How it's built (the honest version)</h2>
+        <p>You don't need to understand the code to deploy it, but it helps to know the moving parts — especially so you know what you're paying for and where your content lives.</p>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Layer</th><th>Technology</th><th>Where it runs</th></tr></thead>
+            <tbody>
+              <tr><td>Web app (what staff see)</td><td>React + Vite + Tailwind</td><td>Served by the app itself</td></tr>
+              <tr><td>Server / API</td><td>Node.js, Express, tRPC</td><td>Railway</td></tr>
+              <tr><td>Database</td><td>MySQL (via Drizzle)</td><td>Railway plugin</td></tr>
+              <tr><td>Training videos &amp; uploads</td><td>S3-compatible storage</td><td>Cloudflare R2 or AWS S3</td></tr>
+              <tr><td>SOP &amp; video content</td><td>Google Docs &amp; Drive</td><td>Your Google account</td></tr>
+              <tr><td>Quiz generation <span class="chip opt">optional</span></td><td>OpenAI-compatible LLM</td><td>OpenAI (or any gateway)</td></tr>
+              <tr><td>Email <span class="chip opt">optional</span></td><td>Gmail app password</td><td>Your Gmail</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note tip"><span class="lbl">The key idea</span><p>Railway <strong>watches your GitHub repo</strong>. Every time code lands on the <code>main</code> branch, Railway rebuilds and redeploys automatically. There's no "server" you log into and babysit — you change code or content, and the live site updates on its own.</p></div>
+      </section>
+
+      <section id="cost">
+        <div class="kicker"><span class="ord">03</span></div>
+        <h2>What it costs to run</h2>
+        <p>Realistic monthly estimates for a single small-to-mid clinic. Actual usage-based services (Railway, S3) scale with traffic and storage, so treat these as a starting range and check current pricing when you sign up.</p>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Service</th><th>What it's for</th><th>Required?</th><th class="num" style="text-align:left">Est. / month</th></tr></thead>
+            <tbody>
+              <tr><td>Railway</td><td>Hosting the app + MySQL database</td><td><span class="chip need">Required</span></td><td class="num">$5–20</td></tr>
+              <tr><td>GitHub</td><td>Storing the code, triggering deploys</td><td><span class="chip need">Required</span></td><td class="num">$0</td></tr>
+              <tr><td>Cloudflare R2 <span class="muted">(or AWS S3)</span></td><td>Video &amp; image storage</td><td><span class="chip need">Required*</span></td><td class="num">$0–5</td></tr>
+              <tr><td>Google account + Drive</td><td>SOP docs &amp; the video library</td><td><span class="chip need">Required</span></td><td class="num">$0</td></tr>
+              <tr><td>OpenAI</td><td>Auto-generating quiz questions</td><td><span class="chip opt">Optional</span></td><td class="num">~$0</td></tr>
+              <tr><td>Gmail app password</td><td>Password resets &amp; notifications</td><td><span class="chip opt">Optional</span></td><td class="num">$0</td></tr>
+              <tr><td>Custom domain</td><td>A branded URL (optional)</td><td><span class="chip opt">Optional</span></td><td class="num">~$1</td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="3">Typical all-in monthly</td><td class="num" style="color:var(--brand)">$10–25</td></tr></tfoot>
+          </table>
+        </div>
+        <div class="note cost"><span class="lbl">Why the LLM cost is ~$0</span><p>Quiz generation calls the AI <strong>once per module, ever</strong> — the result is cached in your database. A whole training catalog is pennies. The app is deliberately built to never make looping or per-view AI calls, so this line stays near zero.</p></div>
+        <p class="muted"><small>* Storage is "required" only if you want video submissions and uploaded media. The library-video feature indexes files that live in Google Drive, so a very lean deployment can defer S3 until you need uploads.</small></p>
+      </section>
+
+      <section id="accounts">
+        <div class="kicker"><span class="ord">04</span></div>
+        <h2>Accounts to open first</h2>
+        <p>Register these before you start. The two dashed ones are optional — you can add them later without redeploying.</p>
+        <div class="grid two">
+          <div class="card"><h4>GitHub <span class="req need">Need</span></h4><p>Free account at github.com. Holds the code and triggers deploys. You'll copy (fork) the existing repo into your own account.</p></div>
+          <div class="card"><h4>Railway <span class="req need">Need</span></h4><p>Sign up at railway.app with your GitHub account. This hosts the app <em>and</em> provides the MySQL database as a one-click plugin. Add a payment method.</p></div>
+          <div class="card"><h4>Cloudflare (R2) <span class="req need">Need*</span></h4><p>Free Cloudflare account, then enable R2 storage. Generous free tier. AWS S3 works identically if you prefer it.</p></div>
+          <div class="card"><h4>Google account <span class="req need">Need</span></h4><p>A Google account with Drive — ideally a clinic account, not personal. Holds your SOP docs and the training-video folder.</p></div>
+          <div class="card"><h4>OpenAI <span class="req opt">Optional</span></h4><p>platform.openai.com. Only needed for auto-generated quizzes. Add ~$5 of credit and it'll last a very long time.</p></div>
+          <div class="card"><h4>Gmail app password <span class="req opt">Optional</span></h4><p>Turn on 2-factor auth on a Gmail account, then generate an "app password." Enables password-reset and notification emails.</p></div>
+        </div>
+      </section>
+
+      <hr class="rule" style="margin: 3rem 0 0; max-width: var(--spine)">
+
+      <section id="p-code">
+        <div class="kicker"><span class="ord">05</span><span class="muted" style="font-size:.85rem">Phase 1 — Get the code</span></div>
+        <h2>Copy the repository</h2>
+        <ol>
+          <li>Sign into GitHub.</li>
+          <li>Go to the source repo and click <strong>Fork</strong> (top-right) to create your own copy under your account.</li>
+          <li>That's it — you now own an independent copy you can deploy and customize.</li>
+        </ol>
+        <div class="note tip"><span class="lbl">Why fork instead of share</span><p>A fork gives the new office its own code, its own deploy pipeline, and the freedom to change branding and content without touching anyone else's live site.</p></div>
+      </section>
+
+      <section id="p-db">
+        <div class="kicker"><span class="ord">06</span><span class="muted" style="font-size:.85rem">Phase 2 — Database &amp; hosting</span></div>
+        <h2>Create the project on Railway</h2>
+        <ol>
+          <li>In Railway, click <strong>New Project → Deploy from GitHub repo</strong> and pick your fork. Railway reads <code>railway.json</code> and knows how to build it (<code>pnpm build</code>) and start it (<code>pnpm start</code>), with a health check at <code>/healthz</code>.</li>
+          <li>In the same project, click <strong>New → Database → Add MySQL</strong>. Railway provisions it and exposes a connection string.</li>
+          <li>Open the MySQL service → <strong>Variables</strong> → copy the <code>DATABASE_URL</code> value. You'll paste it into the app in the next phase.</li>
+        </ol>
+        <div class="note tip"><span class="lbl">Requirements are already declared</span><p>The app targets <strong>Node ≥ 20.11</strong> and <strong>pnpm 10</strong>, both handled automatically by Railway's Nixpacks builder. Nothing to install by hand.</p></div>
+      </section>
+
+      <section id="p-env">
+        <div class="kicker"><span class="ord">07</span><span class="muted" style="font-size:.85rem">Phase 3 — Configure &amp; deploy</span></div>
+        <h2>Set environment variables</h2>
+        <p>Open your <strong>app</strong> service on Railway → <strong>Variables</strong>. These three are the minimum to boot:</p>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Variable</th><th>Value</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>DATABASE_URL</code></td><td>from the MySQL plugin</td><td>Reference the MySQL service's variable</td></tr>
+              <tr><td><code>JWT_SECRET</code></td><td>a long random string</td><td>Signs login cookies — keep it secret</td></tr>
+              <tr><td><code>RUN_MIGRATIONS</code></td><td><code>true</code></td><td>Builds the database tables on first boot</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Then add the feature variables you want. Any you leave out simply stay dormant — the feature is hidden, nothing breaks:</p>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Feature</th><th>Variables</th></tr></thead>
+            <tbody>
+              <tr><td>Video / image storage</td><td><code>S3_BUCKET</code>, <code>S3_REGION</code>, <code>S3_ACCESS_KEY_ID</code>, <code>S3_SECRET_ACCESS_KEY</code> — plus <code>S3_ENDPOINT</code> &amp; <code>S3_FORCE_PATH_STYLE=true</code> for Cloudflare R2</td></tr>
+              <tr><td>Quiz generation</td><td><code>LLM_API_KEY</code>, <code>LLM_BASE_URL</code>, <code>LLM_MODEL</code> <span class="muted">(e.g. gpt-4o-mini)</span></td></tr>
+              <tr><td>Email</td><td><code>GMAIL_USER</code>, <code>GMAIL_APP_PASSWORD</code>, <code>OWNER_EMAIL</code></td></tr>
+              <tr><td>Weekly content sync</td><td><code>ENABLE_CRON=true</code> — runs the Drive syncs on a schedule</td></tr>
+              <tr><td>Video library from Drive</td><td><code>GOOGLE_API_KEY</code> <span class="muted">(public folder)</span> — or OAuth: <code>GOOGLE_DRIVE_CLIENT_ID</code>/<code>_SECRET</code>/<code>_REFRESH_TOKEN</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Deploy</h3>
+        <p>Saving variables triggers a deploy. Watch the build logs — a healthy boot prints the migration steps, then <code>Server running on …</code>. When the health check at <code>/healthz</code> goes green, your site is live at the Railway-provided URL.</p>
+        <div class="note warn"><span class="lbl">Heads up — this is production</span><p>Once deployed, every push to <code>main</code> goes live immediately. For anything non-trivial, work on a branch and open a pull request so nothing reaches staff until you've checked it.</p></div>
+      </section>
+
+      <section id="p-admin">
+        <div class="kicker"><span class="ord">08</span><span class="muted" style="font-size:.85rem">Phase 4 — Your first login</span></div>
+        <h2>Create the first admin account</h2>
+        <p>There's no public sign-up. A fresh database has no users, so there's a one-time bootstrap to create the very first admin. It permanently disables itself the moment an admin exists.</p>
+        <ol>
+          <li>On Railway, add a variable <code>SETUP_SECRET</code> with any random value, and let it redeploy.</li>
+          <li>Send a one-time request to the bootstrap endpoint, passing that secret as a header:</li>
+        </ol>
+        <pre><code><span class="cmt"># replace the URL, secret, and your details</span>
+curl -X POST https://YOUR-APP.up.railway.app/api/setup/first-admin \
+  -H "Content-Type: application/json" \
+  -H "x-setup-secret: YOUR_SETUP_SECRET" \
+  -d '{"email":"you@clinic.com","password":"a-strong-password","name":"Your Name"}'</code></pre>
+        <ol start="3">
+          <li>You'll get back <code>{ ok: true }</code>. Log into the site with those credentials — you'll now see the <strong>Admin</strong> section (Team, Tracks, Activity, Inbox).</li>
+          <li>From then on, create all other staff from <strong>Admin → Team</strong>. The bootstrap endpoint will refuse any further use.</li>
+        </ol>
+        <div class="note tip"><span class="lbl">After bootstrapping</span><p>You can delete the <code>SETUP_SECRET</code> variable — it's done its job and the endpoint is now permanently closed.</p></div>
+      </section>
+
+      <section id="p-content">
+        <div class="kicker"><span class="ord">09</span><span class="muted" style="font-size:.85rem">Phase 5 — Your content</span></div>
+        <h2>Load your SOPs and videos</h2>
+        <p>Content doesn't live in the app — it lives in Google, and the app syncs it. Two separate pipelines:</p>
+
+        <h3>SOPs — from Google Docs</h3>
+        <p>Each SOP is a Google Doc. The app fetches the plain-text export, so <strong>no API key is needed</strong> — the doc just has to be shared publicly for reading.</p>
+        <ol>
+          <li>Write each SOP as a Google Doc.</li>
+          <li>Share it as <strong>"Anyone with the link → Viewer."</strong></li>
+          <li>Copy the document ID from its URL (the long string in <code>/document/d/<b>THIS_PART</b>/edit</code>).</li>
+        </ol>
+
+        <h3>Video library — from a Drive folder</h3>
+        <p>Drop training videos into one Google Drive folder. The sync lists the folder and registers each video, auto-sorting it into a category based on keywords in the filename (e.g. a file named <em>"Sleep — evening routine"</em> lands in a Sleep category).</p>
+        <ul>
+          <li><strong>Easiest auth:</strong> share the folder "Anyone with link," and set <code>GOOGLE_API_KEY</code>. Free, no OAuth dance.</li>
+          <li><strong>For private folders:</strong> set up OAuth refresh-token credentials instead.</li>
+          <li>Name files with clear keywords so auto-categorization works in your favor.</li>
+        </ul>
+        <div class="note tip"><span class="lbl">Keeping content fresh</span><p>With <code>ENABLE_CRON=true</code>, the app re-syncs weekly on its own. Edit an SOP doc and staff are automatically re-flagged to re-read it. You can also trigger a sync on demand from the admin tools.</p></div>
+      </section>
+
+      <section id="p-custom">
+        <div class="kicker"><span class="ord">10</span><span class="muted" style="font-size:.85rem">Phase 6 — The honest caveat</span></div>
+        <h2>What a new office must change in the code</h2>
+        <p>This app was built for one specific clinic, then generalized. It is <strong>not yet a turnkey, multi-tenant product</strong> — a second office needs to edit a handful of hardcoded values in its fork. This is the real work of rolling out, so plan for it:</p>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>What to change</th><th>Where</th></tr></thead>
+            <tbody>
+              <tr><td>Your SOP Google Doc IDs &amp; titles</td><td><code>server/scheduledSopSync.ts</code></td></tr>
+              <tr><td>Your training-video Drive folder ID</td><td><code>server/scheduledLibrarySync.ts</code></td></tr>
+              <tr><td>Video auto-categories (keywords)</td><td><code>server/scheduledLibrarySync.ts</code></td></tr>
+              <tr><td>Logo, app name, colors</td><td><code>client/public/</code> &amp; <code>manifest.json</code></td></tr>
+              <tr><td>Learning tracks &amp; roles</td><td>Created in-app via Admin, once live</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn"><span class="lbl">Set expectations</span><p>None of this is hard, but it does mean a second office needs someone comfortable editing a few code files (or an assistant like Claude Code to do it for them). Budget an afternoon, not five minutes. If you're rolling out to many offices, the real next investment is making these values configurable in the admin panel instead of the code.</p></div>
+      </section>
+
+      <section id="maint">
+        <div class="kicker"><span class="ord">11</span><span class="muted" style="font-size:.85rem">Ongoing</span></div>
+        <h2>Keeping it running</h2>
+        <div class="grid two">
+          <div class="card"><h4>🚀 Deploys</h4><p>Automatic on every push to <code>main</code>. Railway rebuilds and swaps in the new version.</p></div>
+          <div class="card"><h4>🩺 When something breaks</h4><p>Railway's deploy logs are the first place to look — boot messages show migrations and server start.</p></div>
+          <div class="card"><h4>💾 Database migrations</h4><p>Run automatically on boot when <code>RUN_MIGRATIONS=true</code>. Schema changes ship as committed SQL files.</p></div>
+          <div class="card"><h4>👥 Adding staff</h4><p>Admins create every account from <strong>Admin → Team</strong>. There is no public sign-up by design.</p></div>
+        </div>
+      </section>
+
+      <section id="fit">
+        <div class="kicker"><span class="ord">12</span></div>
+        <h2>Is this right for your office?</h2>
+        <div class="grid two">
+          <div class="card"><h4 style="color:var(--good)">✓ A great fit if…</h4><p>You want to own your training system outright, you already run on Google Docs/Drive, you have someone (or Claude) willing to do a one-time technical setup, and you'd rather pay ~$15/mo than per-seat SaaS fees.</p></div>
+          <div class="card"><h4 style="color:var(--clay)">✗ Think twice if…</h4><p>You need a polished no-code admin for everything on day one, you can't touch a config file or spare an afternoon, or you need multi-office tenancy today without any development.</p></div>
+        </div>
+        <div class="pitch" style="margin-top:1.6rem">
+          <p class="quote">A clinic-grade training platform you own, for about the price of one streaming subscription.</p>
+          <p class="muted" style="margin:0">The heavy engineering is already done. Rolling out to a new office is mostly opening accounts, pasting a dozen settings, and pointing it at your own Google Drive. This playbook is the whole map.</p>
+        </div>
+      </section>
+
+      <footer>
+        <p>Reformation Training Hub — internal rollout reference. Costs are estimates as of setup and vary with usage; confirm current pricing with each provider. This deploys real software that stores staff data — treat production credentials with care and keep <code>JWT_SECRET</code>, database, and storage keys private.</p>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+  // ── Theme toggle (persisted) ─────────────────────────────
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeBtn');
+    var icon = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+    function sysDark() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function current() { return root.getAttribute('data-theme') || (sysDark() ? 'dark' : 'light'); }
+    function apply(t) {
+      root.setAttribute('data-theme', t);
+      icon.textContent = t === 'dark' ? '☾' : '☀';
+      label.textContent = t === 'dark' ? 'Dark' : 'Light';
+    }
+    try { var saved = localStorage.getItem('rollout-theme'); if (saved) apply(saved); else apply(current()); }
+    catch (e) { apply(current()); }
+    btn.addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      apply(next);
+      try { localStorage.setItem('rollout-theme', next); } catch (e) {}
+    });
+  })();
+
+  // ── Active section highlighting in the rail ──────────────
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+    if (!links.length || !('IntersectionObserver' in window)) return;
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+    var seen = {};
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { seen[en.target.id] = en.isIntersecting; });
+      // topmost visible section wins
+      var ids = Object.keys(map);
+      for (var i = 0; i < ids.length; i++) {
+        if (seen[ids[i]]) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          map[ids[i]].classList.add('active');
+          break;
+        }
+      }
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    Object.keys(map).forEach(function (id) { var el = document.getElementById(id); if (el) obs.observe(el); });
+  })();
+</script>
+
+</body>
+</html>
