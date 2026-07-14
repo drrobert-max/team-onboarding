@@ -81,9 +81,14 @@ async function getToken(): Promise<string | null> {
 
 export async function syncLibraryVideos(): Promise<{ synced: number; errors: number; skipped: number; found: string[] }> {
   const token = await getToken();
+  // Fallback: a plain API key can list publicly shared folders — free and
+  // no OAuth setup. Set GOOGLE_API_KEY and share the folder "anyone with link".
+  const apiKey = process.env.GOOGLE_API_KEY;
 
-  if (!token) {
-    console.error("[LibrarySync] No Google auth token available");
+  if (!token && !apiKey) {
+    console.error(
+      "[LibrarySync] No Google auth — set GOOGLE_API_KEY (public folder) or GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN"
+    );
     return { synced: 0, errors: 1, skipped: 0, found: [] };
   }
 
@@ -100,10 +105,11 @@ export async function syncLibraryVideos(): Promise<{ synced: number; errors: num
         fields: "nextPageToken,files(id,name,mimeType,createdTime)",
         pageSize: "100",
         ...(pageToken ? { pageToken } : {}),
+        ...(!token && apiKey ? { key: apiKey } : {}),
       });
 
       const res = await fetch(`${DRIVE_API_BASE}/files?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!res.ok) {

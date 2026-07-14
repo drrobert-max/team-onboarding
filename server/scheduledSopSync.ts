@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { execSync } from "child_process";
 import * as db from "./db";
 
 // Google Drive document IDs for the Care Plans SOPs to sync
@@ -12,17 +11,26 @@ const CARE_PLAN_SOPS = [
 
 const CARE_PLANS_CATEGORY_ID = 3;
 
-function extractTextFromGoogleDoc(docData: any): string {
-  let text = "";
-  const bodyContent = docData?.body?.content || [];
-  for (const elem of bodyContent) {
-    const para = elem?.paragraph;
-    if (!para) continue;
-    for (const pe of para.elements || []) {
-      text += pe?.textRun?.content || "";
-    }
+/**
+ * Fetch a Google Doc's plain text via the public export endpoint.
+ * Requires the doc to be shared as "anyone with the link can view" —
+ * no API key or OAuth needed. Throws if the doc isn't accessible.
+ */
+async function fetchGoogleDocText(googleDocId: string): Promise<string> {
+  const url = `https://docs.google.com/document/d/${googleDocId}/export?format=txt`;
+  const resp = await fetch(url, { redirect: "follow" });
+  if (!resp.ok) {
+    throw new Error(
+      `export fetch failed (HTTP ${resp.status}) — is the doc shared as "anyone with link"?`
+    );
   }
-  return text;
+  const text = await resp.text();
+  // A private doc redirects to a Google login page (HTML) instead of text.
+  if (text.trimStart().toLowerCase().startsWith("<!doctype html") || text.includes("<html")) {
+    throw new Error(`doc is not publicly accessible — share it as "anyone with link: viewer"`);
+  }
+  // Strip BOM and normalize line endings
+  return text.replace(/^﻿/, "").replace(/\r\n/g, "\n").trim();
 }
 
 export async function scheduledSopSyncHandler(req: Request, res: Response) {
@@ -33,12 +41,7 @@ export async function scheduledSopSyncHandler(req: Request, res: Response) {
 
     for (const sop of CARE_PLAN_SOPS) {
       try {
-        const raw = execSync(
-          `gws docs documents get --params '{"documentId":"${sop.googleDocId}"}' --format json`,
-          { encoding: "utf8", timeout: 30000 }
-        );
-        const docData = JSON.parse(raw);
-        const content = extractTextFromGoogleDoc(docData);
+        const content = await fetchGoogleDocText(sop.googleDocId);
 
         const existing = await db.getSopByGoogleDocId(sop.googleDocId);
         if (existing) {
@@ -68,11 +71,11 @@ export async function scheduledSopSyncHandler(req: Request, res: Response) {
       }
     }
 
+    console.log(`[SopSync] done — added ${added}, updated ${updated}, errors: ${errors.length}`);
     res.json({ ok: true, updated, added, errors });
   } catch (err: any) {
     res.status(500).json({
       error: err.message,
-      stack: err.stack,
       timestamp: new Date().toISOString(),
     });
   }
