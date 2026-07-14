@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useEffect } from "react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -36,10 +36,17 @@ export default function AdminDashboard() {
   const statsQuery = trpc.admin.stats.useQuery();
   const summaryQuery = trpc.users.progressSummary.useQuery();
   const pendingQuery = trpc.users.pending.useQuery();
+  const allUsersQuery = trpc.users.list.useQuery();
 
   const stats = statsQuery.data;
   const summaries = summaryQuery.data ?? [];
   const pending = pendingQuery.data ?? [];
+  // Approved trainees with no training role are invisible in the progress
+  // summary (it filters them out) yet see a dead-end screen — surface them here
+  // so they're never forgotten.
+  const needsRole = (allUsersQuery.data ?? []).filter(
+    (u: any) => u.role === "user" && u.approvalStatus === "approved" && !u.teamRole
+  );
 
   if (loading) return null;
 
@@ -98,6 +105,36 @@ export default function AdminDashboard() {
                     >
                       Review →
                     </button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Trainees missing a training role — they hit a dead-end screen until assigned */}
+        {needsRole.length > 0 && (
+          <Card className="mb-6 border-amber-300/60 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4" />
+                Needs a training role ({needsRole.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground mb-3">
+                These team members are approved but have no training role yet, so they can&apos;t start onboarding — they see a &quot;waiting for role&quot; screen until you assign one.
+              </p>
+              <div className="space-y-2">
+                {needsRole.map((u: any) => (
+                  <div key={u.id} className="flex items-center justify-between p-3 bg-background rounded-lg border border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{u.name}</p>
+                      <p className="text-xs text-muted-foreground">{u.email}</p>
+                    </div>
+                    <Link href="/admin/users" className="text-xs text-amber-700 dark:text-amber-400 font-medium hover:underline">
+                      Assign role →
+                    </Link>
                   </div>
                 ))}
               </div>

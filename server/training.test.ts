@@ -36,6 +36,19 @@ vi.mock("./db", () => ({
   getSopByGoogleDocId: vi.fn().mockResolvedValue(null),
   flagSopForAllUsers: vi.fn().mockResolvedValue(undefined),
   upsertSop: vi.fn().mockResolvedValue(undefined),
+  getUserByEmail: vi.fn().mockResolvedValue(null),
+  createUserWithPassword: vi.fn().mockResolvedValue({
+    id: 2, email: "new@reformationchiropractic.com", name: "New Hire", role: "user", teamRole: "ca",
+  }),
+}));
+
+vi.mock("./emailAuth", () => ({
+  hashPassword: vi.fn().mockResolvedValue("hashed"),
+  verifyPassword: vi.fn().mockResolvedValue(true),
+  sendWelcomeEmail: vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+  generateResetToken: vi.fn().mockReturnValue("token"),
+  resetTokenExpiresAt: vi.fn().mockReturnValue(new Date()),
 }));
 
 vi.mock("./_core/notification", () => ({
@@ -147,6 +160,34 @@ describe("notifications router", () => {
     const ctx = makeCtx();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.notifications.markAllRead();
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("users router — createUser role requirement", () => {
+  it("rejects a trainee created without a training role", async () => {
+    const ctx = makeCtx({}, "admin");
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.users.createUser({ email: "no-role@reformationchiropractic.com", name: "No Role", password: "password1" })
+    ).rejects.toThrow();
+  });
+
+  it("allows a trainee created with a training role", async () => {
+    const ctx = makeCtx({}, "admin");
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.createUser({
+      email: "ca@reformationchiropractic.com", name: "New CA", password: "password1", teamRole: "ca",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("allows an admin created without a training role", async () => {
+    const ctx = makeCtx({}, "admin");
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.createUser({
+      email: "admin2@reformationchiropractic.com", name: "New Admin", password: "password1", role: "admin",
+    });
     expect(result.success).toBe(true);
   });
 });
