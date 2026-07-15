@@ -31,6 +31,7 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const TrackEditor = lazy(() => import("./pages/TrackEditor"));
 const LearningLibrary = lazy(() => import("./pages/LearningLibrary"));
 const AdminUAT = lazy(() => import("./pages/AdminUAT"));
+const AdminImport = lazy(() => import("./pages/AdminImport"));
 
 // Reset scroll position on navigation (wouter keeps the previous scroll,
 // which feels broken when moving between long pages). Hash links (#…) keep
@@ -73,6 +74,7 @@ function Router() {
         <Route path="/admin/submissions" component={AdminSubmissions} />
         <Route path="/admin/tracks" component={TrackEditor} />
         <Route path="/admin/uat" component={AdminUAT} />
+        <Route path="/admin/import" component={AdminImport} />
         <Route path="/submissions" component={Submissions} />
         <Route path="/library" component={LearningLibrary} />
         <Route path="/404" component={NotFound} />
