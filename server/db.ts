@@ -164,6 +164,16 @@ export async function upsertSopCategory(data: { name: string; slug: string; desc
   await db.insert(sopCategories).values(data).onDuplicateKeyUpdate({ set: { name: data.name, description: data.description ?? null } });
 }
 
+/** Return the id of the category with this slug, creating it if it doesn't exist. */
+export async function getOrCreateSopCategory(name: string, slug: string): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const existing = await db.select().from(sopCategories).where(eq(sopCategories.slug, slug)).limit(1);
+  if (existing[0]) return existing[0].id;
+  const result = await db.insert(sopCategories).values({ name, slug });
+  return Number((result as any).insertId ?? 0);
+}
+
 // ─── SOPs ─────────────────────────────────────────────────────────────────────
 
 export async function getSopsByCategory(categoryId: number): Promise<Sop[]> {
