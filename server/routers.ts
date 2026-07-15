@@ -1007,6 +1007,98 @@ const adminRouter = router({
   getSopsForBinder: adminProcedure.query(async () => {
     return db.getAllSopsWithCategory();
   }),
+
+  // ── One-time: import training content from the old (Manus) database ──────────
+  // The admin pastes the old MySQL/TiDB connection string. This server can reach
+  // both databases, so it copies the reusable content — tracks, weeks, modules,
+  // quizzes — into this database, preserving IDs so the links between them stay
+  // intact. Per-user history (progress, quiz attempts, grades) is intentionally
+  // left behind. Guarded: refuses if any tracks already exist, so it can never
+  // double-import, and runs in a transaction so it's all-or-nothing.
+  importFromOldDb: adminProcedure
+    .input(z.object({ connectionString: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const existing = await db.getTracks();
+      if (existing.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "This database already has tracks — import is disabled to avoid duplicates." });
+      }
+      const db2 = await db.getDb();
+      if (!db2) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available." });
+
+      const schema = await import("../drizzle/schema");
+      const mysql = await import("mysql2/promise");
+
+      let url: URL;
+      try { url = new URL(input.connectionString.trim()); }
+      catch { throw new TRPCError({ code: "BAD_REQUEST", message: "That doesn't look like a valid connection string." }); }
+
+      // Parse a JSON string back to an object (mysql may return JSON columns as
+      // strings); leave anything else untouched.
+      const norm = (v: any) => {
+        if (v === undefined || v === null) return null;
+        if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
+        return v;
+      };
+      const bool = (v: any, d: boolean) => (v === undefined || v === null ? d : !!v);
+
+      let old: any;
+      try {
+        old = await mysql.createConnection({
+          host: url.hostname, port: Number(url.port) || 3306,
+          user: decodeURIComponent(url.username), password: decodeURIComponent(url.password),
+          database: url.pathname.slice(1),
+          ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true },
+          connectTimeout: 20000,
+        });
+      } catch (e: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Couldn't connect to the old database: ${e.code || e.message}` });
+      }
+
+      try {
+        const read = async (t: string) => {
+          const [rows] = await old.query("SELECT * FROM `" + t + "`");
+          return rows as any[];
+        };
+        const oTracks = await read("tracks");
+        const oMs = await read("milestones");
+        const oMods = await read("modules");
+        const oQuiz = await read("quizzes");
+
+        await db2.transaction(async (tx: any) => {
+          if (oTracks.length) await tx.insert(schema.tracks).values(oTracks.map((r) => ({
+            id: r.id, teamRole: r.teamRole, name: r.name,
+            description: r.description ?? null, createdAt: r.createdAt ?? new Date(),
+          })));
+          if (oMs.length) await tx.insert(schema.milestones).values(oMs.map((r) => ({
+            id: r.id, trackId: r.trackId, title: r.title, description: r.description ?? null,
+            weekNumber: r.weekNumber, dueDay: r.dueDay ?? null, sortOrder: r.sortOrder ?? 0,
+            createdAt: r.createdAt ?? new Date(),
+          })));
+          if (oMods.length) await tx.insert(schema.modules).values(oMods.map((r) => ({
+            id: r.id, milestoneId: r.milestoneId, title: r.title, description: r.description ?? null,
+            type: r.type, sopId: r.sopId ?? null, loomUrl: r.loomUrl ?? null, loomUrl2: r.loomUrl2 ?? null,
+            loomVideoId: r.loomVideoId ?? null, taskInstructions: r.taskInstructions ?? null,
+            audioFiles: norm(r.audioFiles), sortOrder: r.sortOrder ?? 0,
+            isRequired: bool(r.isRequired, true), quizEnabled: bool(r.quizEnabled, false),
+            createdAt: r.createdAt ?? new Date(), updatedAt: r.updatedAt ?? new Date(),
+          })));
+          if (oQuiz.length) await tx.insert(schema.quizzes).values(oQuiz.map((r) => ({
+            id: r.id, moduleId: r.moduleId, questions: norm(r.questions),
+            passingScore: r.passingScore ?? 70, createdAt: r.createdAt ?? new Date(), updatedAt: r.updatedAt ?? new Date(),
+          })));
+        });
+
+        return {
+          success: true,
+          imported: { tracks: oTracks.length, weeks: oMs.length, modules: oMods.length, quizzes: oQuiz.length },
+          trackNames: oTracks.map((t) => t.name as string),
+        };
+      } catch (e: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Import failed: ${e.sqlMessage || e.message}` });
+      } finally {
+        try { await old.end(); } catch { /* ignore */ }
+      }
+    }),
 });
 
 // ─── Scheduled Task Endpoint ──────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  DatabaseZap,
   GraduationCap,
   Loader2,
   TrendingUp,
@@ -37,6 +38,9 @@ export default function AdminDashboard() {
   const summaryQuery = trpc.users.progressSummary.useQuery();
   const pendingQuery = trpc.users.pending.useQuery();
   const allUsersQuery = trpc.users.list.useQuery();
+  const tracksQuery = trpc.tracks.all.useQuery();
+  // No tracks yet = nothing for trainees to do. Prompt the one-time import.
+  const noTracks = tracksQuery.isSuccess && (tracksQuery.data ?? []).length === 0;
 
   const stats = statsQuery.data;
   const summaries = summaryQuery.data ?? [];
@@ -107,6 +111,31 @@ export default function AdminDashboard() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* No training tracks yet — offer the one-time import from the old system */}
+        {noTracks && (
+          <Card className="mb-6 border-primary/30 bg-secondary/40">
+            <CardContent className="py-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-background border border-border flex items-center justify-center shrink-0">
+                  <DatabaseZap className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">No training tracks yet</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Bring your existing tracks, modules, and quizzes over from your old system — a one-time import.
+                  </p>
+                </div>
+                <Link href="/admin/import">
+                  <Button size="sm" className="gap-1.5 w-full sm:w-auto">
+                    <DatabaseZap className="h-3.5 w-3.5" />
+                    Import my content
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
