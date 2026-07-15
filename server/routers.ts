@@ -970,9 +970,11 @@ const adminRouter = router({
     return db.getAdminStats();
   }),
 
-  // Scheduled SOP sync endpoint (also callable by admin)
+  // Run the Google Drive SOP sync on demand (also runs weekly via cron).
   syncSops: adminProcedure.mutation(async () => {
-    return { success: true, message: "SOP sync initiated" };
+    const { syncSopsFromDrive } = await import("./scheduledSopSync");
+    const result = await syncSopsFromDrive();
+    return { success: result.errors.length === 0, ...result };
   }),
 
   // ── New Hire Prep Checklist ──────────────────────────────────────────────

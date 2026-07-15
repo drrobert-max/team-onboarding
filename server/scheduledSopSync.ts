@@ -1,82 +1,144 @@
 import { Request, Response } from "express";
 import * as db from "./db";
+import { listDriveChildren, fetchGoogleDocText, FOLDER_MIME, DOC_MIME } from "./googleDrive";
+import { sendSopUpdatedEmail } from "./emailAuth";
 
-// Google Drive document IDs for the Care Plans SOPs to sync
-const CARE_PLAN_SOPS = [
-  { googleDocId: "15sQRjXkwogc1A_QWny6z9NculbllHDPSHyXW088M9g8", title: "12WBR SOP" },
-  { googleDocId: "1zFbEkxCTJsPaxx_G_TGIAjM-ogQBMvsV7fr0GbE0W68", title: "12WBR EXT Plan 24 weeks" },
-  { googleDocId: "1lwiToxCDeLQkbsLVW_s36vZRmuC_9NylCjJdUkZj5Ys", title: "6 Month Behavior Reset" },
-  { googleDocId: "13IExfoOlxXlUtzcTY_PTSvX4hL1co28Lk1-I_8m7_9A", title: "Wellness Billing Guidelines" },
-];
+// The top-level Google Drive folder that holds the SOP library. Its subfolders
+// become categories and the Google Docs inside them become SOPs. Overridable per
+// deployment via SOP_DRIVE_FOLDER_ID; defaults to the Reformation SOP folder.
+const SOP_ROOT_FOLDER_ID =
+  process.env.SOP_DRIVE_FOLDER_ID ?? "1a_jzDJAZFH92Ez-Ixtzu1wlvtdG5Frbi";
 
-const CARE_PLANS_CATEGORY_ID = 3;
-
-/**
- * Fetch a Google Doc's plain text via the public export endpoint.
- * Requires the doc to be shared as "anyone with the link can view" —
- * no API key or OAuth needed. Throws if the doc isn't accessible.
- */
-async function fetchGoogleDocText(googleDocId: string): Promise<string> {
-  const url = `https://docs.google.com/document/d/${googleDocId}/export?format=txt`;
-  const resp = await fetch(url, { redirect: "follow" });
-  if (!resp.ok) {
-    throw new Error(
-      `export fetch failed (HTTP ${resp.status}) — is the doc shared as "anyone with link"?`
-    );
-  }
-  const text = await resp.text();
-  // A private doc redirects to a Google login page (HTML) instead of text.
-  if (text.trimStart().toLowerCase().startsWith("<!doctype html") || text.includes("<html")) {
-    throw new Error(`doc is not publicly accessible — share it as "anyone with link: viewer"`);
-  }
-  // Strip BOM and normalize line endings
-  return text.replace(/^﻿/, "").replace(/\r\n/g, "\n").trim();
+function slugify(s: string): string {
+  return (
+    s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 200) || "general"
+  );
 }
 
-export async function scheduledSopSyncHandler(req: Request, res: Response) {
-  try {
-    let updated = 0;
-    let added = 0;
-    const errors: string[] = [];
+export type SopSyncResult = {
+  categories: number;
+  added: number;
+  updated: number;
+  errors: string[];
+  updatedTitles: string[];
+};
 
-    for (const sop of CARE_PLAN_SOPS) {
+/**
+ * Mirror the Google Drive SOP folder into the app's SOP library:
+ * root folder → subfolders become categories → Google Docs become SOPs.
+ * When an existing SOP's content changes it's re-versioned, staff are flagged
+ * to re-review, and a bell notification + email go out. Brand-new SOPs are added
+ * silently (so the first sync doesn't spam everyone about the whole library).
+ */
+export async function syncSopsFromDrive(): Promise<SopSyncResult> {
+  const errors: string[] = [];
+  let added = 0;
+  let updated = 0;
+  const changed: { id: number; title: string }[] = [];
+
+  // Sync a list of docs into a given category, tracking adds/updates.
+  const syncDocs = async (docs: { id: string; name: string }[], categoryId: number) => {
+    for (const doc of docs) {
       try {
-        const content = await fetchGoogleDocText(sop.googleDocId);
-
-        const existing = await db.getSopByGoogleDocId(sop.googleDocId);
+        const content = await fetchGoogleDocText(doc.id);
+        const existing = await db.getSopByGoogleDocId(doc.id);
         if (existing) {
           if (existing.content !== content) {
-            await db.upsertSop({
-              googleDocId: sop.googleDocId,
-              title: sop.title,
-              content,
-              categoryId: CARE_PLANS_CATEGORY_ID,
-              lastUpdated: new Date(),
-            });
+            // upsertSop re-versions + sets flaggedForReview when content differs.
+            await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
             await db.flagSopForAllUsers(existing.id, "SOP updated — please re-review");
+            changed.push({ id: existing.id, title: doc.name });
             updated++;
           }
         } else {
-          await db.upsertSop({
-            googleDocId: sop.googleDocId,
-            title: sop.title,
-            content,
-            categoryId: CARE_PLANS_CATEGORY_ID,
-            lastUpdated: new Date(),
-          });
+          await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
           added++;
         }
-      } catch (err: any) {
-        errors.push(`${sop.title}: ${err.message}`);
+      } catch (e: any) {
+        errors.push(`${doc.name}: ${e.message}`);
       }
     }
+  };
 
-    console.log(`[SopSync] done — added ${added}, updated ${updated}, errors: ${errors.length}`);
-    res.json({ ok: true, updated, added, errors });
-  } catch (err: any) {
-    res.status(500).json({
-      error: err.message,
-      timestamp: new Date().toISOString(),
-    });
+  // 1. Read the root folder's direct children.
+  let children;
+  try {
+    children = await listDriveChildren(SOP_ROOT_FOLDER_ID);
+  } catch (e: any) {
+    errors.push(`Could not read the SOP folder: ${e.message}`);
+    return { categories: 0, added, updated, errors, updatedTitles: [] };
+  }
+  const subfolders = children.filter((c) => c.mimeType === FOLDER_MIME);
+  const rootDocs = children.filter((c) => c.mimeType === DOC_MIME);
+
+  // 2. Any docs sitting loose in the root → a "General" category.
+  if (rootDocs.length) {
+    try {
+      const catId = await db.getOrCreateSopCategory("General", "general");
+      await syncDocs(rootDocs.map((d) => ({ id: d.id, name: d.name })), catId);
+    } catch (e: any) {
+      errors.push(`General: ${e.message}`);
+    }
+  }
+
+  // 3. Each subfolder → a category, its docs → SOPs.
+  let categories = 0;
+  for (const folder of subfolders) {
+    try {
+      const catId = await db.getOrCreateSopCategory(folder.name, slugify(folder.name));
+      categories++;
+      const docs = await listDriveChildren(folder.id, DOC_MIME);
+      await syncDocs(docs.map((d) => ({ id: d.id, name: d.name })), catId);
+    } catch (e: any) {
+      errors.push(`Category "${folder.name}": ${e.message}`);
+    }
+  }
+
+  // 4. Notify staff about SOPs whose content actually changed.
+  if (changed.length) {
+    try {
+      await notifyStaffOfSopUpdates(changed);
+    } catch (e: any) {
+      errors.push(`notify: ${e.message}`);
+    }
+  }
+
+  return { categories, added, updated, errors, updatedTitles: changed.map((c) => c.title) };
+}
+
+async function notifyStaffOfSopUpdates(changed: { id: number; title: string }[]) {
+  const users = (await db.getAllUsers()).filter((u) => u.approvalStatus === "approved");
+  const titles = changed.map((c) => c.title);
+  for (const u of users) {
+    // In-app bell notification — one per changed SOP so each is clickable.
+    for (const c of changed) {
+      await db.createNotification({
+        userId: u.id,
+        type: "sop_updated",
+        title: `SOP updated: ${c.title}`,
+        message: `"${c.title}" was updated. Please review the latest version.`,
+        relatedId: c.id,
+      });
+    }
+    // One digest email per person (best-effort; no-op if Gmail isn't configured).
+    if (u.email) {
+      try {
+        await sendSopUpdatedEmail(u.email, u.name ?? "", titles);
+      } catch { /* email is best-effort — never fail the sync over it */ }
+    }
+  }
+}
+
+// HTTP entry point used by the weekly scheduler (POST /api/scheduled/sop-sync).
+export async function scheduledSopSyncHandler(_req: Request, res: Response) {
+  try {
+    const result = await syncSopsFromDrive();
+    console.log(
+      `[SopSync] categories=${result.categories} added=${result.added} updated=${result.updated} errors=${result.errors.length}`
+    );
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    console.error("[SopSync] Handler error:", e);
+    res.status(500).json({ ok: false, error: e.message });
   }
 }

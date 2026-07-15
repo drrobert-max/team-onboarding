@@ -11,10 +11,12 @@ import {
   DatabaseZap,
   GraduationCap,
   Loader2,
+  RefreshCw,
   TrendingUp,
   Trophy,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { useEffect } from "react";
@@ -41,6 +43,17 @@ export default function AdminDashboard() {
   const tracksQuery = trpc.tracks.all.useQuery();
   // No tracks yet = nothing for trainees to do. Prompt the one-time import.
   const noTracks = tracksQuery.isSuccess && (tracksQuery.data ?? []).length === 0;
+
+  const syncSops = trpc.admin.syncSops.useMutation({
+    onSuccess: (r: any) => {
+      if (r.errors?.length) {
+        toast.warning(`SOP sync finished with issues — ${r.errors[0]}${r.errors.length > 1 ? ` (+${r.errors.length - 1} more)` : ""}`);
+      } else {
+        toast.success(`SOP sync complete — ${r.updated} updated, ${r.added} added, ${r.categories} categories`);
+      }
+    },
+    onError: (e) => toast.error(`SOP sync failed — ${e.message}`),
+  });
 
   const stats = statsQuery.data;
   const summaries = summaryQuery.data ?? [];
@@ -140,6 +153,33 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* SOP library — Google Drive sync (runs weekly; on-demand button here) */}
+        <Card className="mb-6">
+          <CardContent className="py-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                <RefreshCw className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground">SOP library — Google Drive sync</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Pulls your SOP folders and documents from Google Drive. Runs automatically each week — use this to sync right now.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 w-full sm:w-auto"
+                disabled={syncSops.isPending}
+                onClick={() => syncSops.mutate()}
+              >
+                {syncSops.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {syncSops.isPending ? "Syncing…" : "Sync now"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Trainees missing a training role — they hit a dead-end screen until assigned */}
         {needsRole.length > 0 && (

@@ -40,6 +40,41 @@ function getTransport() {
   });
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Notify a staff member that one or more SOPs were updated. Best-effort: a no-op
+ * when Gmail sending isn't configured, so callers never hang or fail on it.
+ */
+export async function sendSopUpdatedEmail(
+  toEmail: string,
+  toName: string,
+  sopTitles: string[]
+): Promise<void> {
+  if (!process.env.GMAIL_APP_PASSWORD || sopTitles.length === 0) return;
+  const transport = getTransport();
+  const items = sopTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+  const subject =
+    sopTitles.length === 1 ? `SOP updated: ${sopTitles[0]}` : `${sopTitles.length} SOPs were updated`;
+  await transport.sendMail({
+    from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
+    to: toEmail,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+        <h2 style="color:#2d5016">Reformation Training Hub</h2>
+        <p>Hi ${escapeHtml(toName) || "there"},</p>
+        <p>The following ${sopTitles.length === 1 ? "SOP was" : "SOPs were"} updated. Please review the latest version in the Training Hub.</p>
+        <ul style="line-height:1.7">${items}</ul>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
+        <p style="color:#999;font-size:12px">Reformation Chiropractic · Internal Training Hub</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   toName: string,
