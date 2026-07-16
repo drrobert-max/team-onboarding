@@ -170,8 +170,18 @@ export async function getOrCreateSopCategory(name: string, slug: string): Promis
   if (!db) return 0;
   const existing = await db.select().from(sopCategories).where(eq(sopCategories.slug, slug)).limit(1);
   if (existing[0]) return existing[0].id;
-  const result = await db.insert(sopCategories).values({ name, slug });
-  return Number((result as any).insertId ?? 0);
+  await db.insert(sopCategories).values({ name, slug });
+  // Re-select by slug instead of trusting the driver's insertId (its shape
+  // varies across MySQL drivers) so the returned category id is always correct.
+  const created = await db.select().from(sopCategories).where(eq(sopCategories.slug, slug)).limit(1);
+  return created[0]?.id ?? 0;
+}
+
+/** Keep an existing SOP's category and title aligned with its Drive source. */
+export async function updateSopCategoryAndTitle(sopId: number, categoryId: number, title: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(sops).set({ categoryId, title }).where(eq(sops.id, sopId));
 }
 
 // ─── SOPs ─────────────────────────────────────────────────────────────────────

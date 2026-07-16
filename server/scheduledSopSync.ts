@@ -50,6 +50,11 @@ export async function syncSopsFromDrive(): Promise<SopSyncResult> {
             changed.push({ id: existing.id, title: doc.name });
             updated++;
           }
+          // Keep category/title aligned with Drive — this also repairs any SOP
+          // saved with the wrong category by an earlier run.
+          if (existing.categoryId !== categoryId || existing.title !== doc.name) {
+            await db.updateSopCategoryAndTitle(existing.id, categoryId, doc.name);
+          }
         } else {
           await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
           added++;
