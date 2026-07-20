@@ -114,15 +114,21 @@ async function startServer() {
       return res.status(404).json({ error: "Not found" });
     }
     try {
-      const { keyword, loomUrl, apply } = req.body ?? {};
-      if (!keyword || !loomUrl) {
-        return res.status(400).json({ error: "keyword and loomUrl are required" });
+      const { keyword, moduleIds, loomUrl, apply } = req.body ?? {};
+      if (!loomUrl || (!keyword && !Array.isArray(moduleIds))) {
+        return res.status(400).json({ error: "loomUrl and (keyword or moduleIds) are required" });
       }
       const db = await import("../db");
       const loomVideoId = String(loomUrl).split("?")[0].replace(/\/+$/, "").split("/").pop() || "";
-      const kw = String(keyword).toLowerCase();
       const all = await db.getAllModules();
-      const matched = all.filter((m: any) => (m.title ?? "").toLowerCase().includes(kw));
+      let matched: any[];
+      if (Array.isArray(moduleIds) && moduleIds.length) {
+        const idset = new Set(moduleIds.map((n: any) => Number(n)));
+        matched = all.filter((m: any) => idset.has(m.id));
+      } else {
+        const kw = String(keyword).toLowerCase();
+        matched = all.filter((m: any) => (m.title ?? "").toLowerCase().includes(kw));
+      }
       let updated = 0;
       if (apply) {
         for (const m of matched) {
