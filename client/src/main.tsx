@@ -88,6 +88,23 @@ if ('serviceWorker' in navigator) {
   (window as Window & { __pwaInstallPrompt?: Event }).__pwaInstallPrompt = e;
 });
 
+// Recover from stale code-split chunks after a deploy: when a lazily imported
+// page module 404s (its hashed filename was replaced by a newer build), reload
+// once to fetch the current version instead of surfacing an error to the user.
+// The timestamp guard prevents a reload loop if the chunk is genuinely missing.
+function reloadForStaleChunk() {
+  const KEY = 'chunk-reload-at';
+  const last = Number(sessionStorage.getItem(KEY) || 0);
+  if (Date.now() - last > 10_000) {
+    sessionStorage.setItem(KEY, String(Date.now()));
+    window.location.reload();
+  }
+}
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  reloadForStaleChunk();
+});
+
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
     <QueryClientProvider client={queryClient}>
