@@ -184,6 +184,19 @@ export async function updateSopCategoryAndTitle(sopId: number, categoryId: numbe
   await db.update(sops).set({ categoryId, title }).where(eq(sops.id, sopId));
 }
 
+/** Point an existing SOP at a different Google Doc (keeps its id and module links). */
+export async function repointSop(sopId: number, data: { googleDocId: string; title: string; content: string }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(sops).set({
+    googleDocId: data.googleDocId,
+    title: data.title,
+    content: data.content,
+    lastUpdated: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(sops.id, sopId));
+}
+
 // ─── SOPs ─────────────────────────────────────────────────────────────────────
 
 export async function getSopsByCategory(categoryId: number): Promise<Sop[]> {
