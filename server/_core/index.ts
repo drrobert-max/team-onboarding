@@ -106,6 +106,30 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: point an existing SOP at a different Google Doc (e.g.
+  // swap a not-owned source doc for an owned copy) without losing module links.
+  app.post("/api/admin/repoint-sop", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { oldDocId, newDocId, title } = req.body ?? {};
+      if (!oldDocId || !newDocId || !title) {
+        return res.status(400).json({ error: "oldDocId, newDocId and title are required" });
+      }
+      const db = await import("../db");
+      const { fetchGoogleDocText } = await import("../googleDrive");
+      const sop = await db.getSopByGoogleDocId(oldDocId);
+      if (!sop) return res.status(404).json({ error: "No SOP found for oldDocId" });
+      const content = await fetchGoogleDocText(newDocId);
+      await db.repointSop(sop.id, { googleDocId: newDocId, title, content });
+      res.json({ ok: true, sopId: sop.id, title, from: oldDocId, to: newDocId });
+    } catch (e: any) {
+      console.error("[RepointSop] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: replace the Loom video on every module whose title
   // matches a keyword. Gated by the SETUP_SECRET header. Dry run when apply=false.
   app.post("/api/admin/update-module-loom", async (req, res) => {
