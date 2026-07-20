@@ -39,6 +39,8 @@ vi.mock("./db", () => ({
   getUserByEmail: vi.fn().mockResolvedValue(null),
   getUserById: vi.fn().mockResolvedValue(null),
   areTestOutsMastered: vi.fn().mockResolvedValue(true),
+  getMilestoneById: vi.fn().mockResolvedValue(null),
+  setTestOutGrade: vi.fn().mockResolvedValue({ id: 1 }),
   createUserWithPassword: vi.fn().mockResolvedValue({
     id: 2, email: "new@reformationchiropractic.com", name: "New Hire", role: "user", teamRole: "ca",
   }),
@@ -189,6 +191,25 @@ describe("onboarding completion gate", () => {
     const firedComplete = vi.mocked(dbm.createNotification).mock.calls
       .some(c => (c[0] as any)?.type === "onboarding_complete");
     expect(firedComplete).toBe(true);
+  });
+
+  it("reopens a completed onboarding when a test-out regresses to needs improvement", async () => {
+    const dbm = await import("./db");
+    vi.mocked(dbm.getUserById).mockResolvedValue({
+      id: 1, name: "Test User", email: "test@reformationchiropractic.com",
+      teamRole: "ca", onboardingCompletedAt: new Date(),
+    } as any);
+    vi.mocked(dbm.getTrackByRole).mockResolvedValue({ id: 5, teamRole: "ca", name: "CA" } as any);
+    vi.mocked(dbm.getMilestoneById).mockResolvedValue(null);
+    vi.mocked(dbm.areTestOutsMastered).mockResolvedValue(false);
+    vi.mocked(dbm.logActivity).mockClear();
+
+    const caller = appRouter.createCaller(makeCtx({}, "admin"));
+    await caller.grading.setGrade({ userId: 1, moduleId: 1, milestoneId: 50, grade: "needs_improvement" });
+
+    const reopened = vi.mocked(dbm.logActivity).mock.calls
+      .some(c => (c[0] as any)?.eventType === "onboarding_reopened");
+    expect(reopened).toBe(true);
   });
 });
 

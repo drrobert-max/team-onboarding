@@ -62,6 +62,40 @@ async function maybeCompleteOnboarding(userId: number): Promise<void> {
   });
 }
 
+/**
+ * Reverse a completed onboarding when a test-out regresses. If a trainee was
+ * already marked complete and a test-out is later graded "needs improvement"
+ * (so not all test-outs are mastered anymore), clear their completion so
+ * "done" stays trustworthy. Applies to every track — it keys off the trainee's
+ * own role and their track's test-out milestones. No-op if not currently
+ * complete or if all test-outs are still mastered.
+ */
+async function maybeReopenOnboarding(userId: number): Promise<void> {
+  const user = await db.getUserById(userId);
+  if (!user || !user.teamRole || !user.onboardingCompletedAt) return;
+
+  const track = await db.getTrackByRole(user.teamRole);
+  if (!track) return;
+
+  if (await db.areTestOutsMastered(userId, track.id)) return; // still all mastered — leave it
+
+  const dbConn = await db.getDb();
+  if (dbConn) {
+    const { users } = await import("../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    await dbConn.update(users).set({ onboardingCompletedAt: null }).where(eq(users.id, userId));
+  }
+  await db.logActivity({
+    userId,
+    eventType: "onboarding_reopened",
+    description: "Onboarding reopened: a test-out was marked Needs Improvement after completion.",
+  });
+  notifyOwner({
+    title: `↩️ ${user.name}'s onboarding reopened`,
+    content: `${user.name} (${user.email}) had a test-out marked Needs Improvement after finishing, so their ${user.teamRole} onboarding is no longer marked complete until it's mastered again.`,
+  }).catch(() => {});
+}
+
 // ─── Storage Router ─────────────────────────────────────────────────────────
 const storageRouter = router({
   presign: protectedProcedure
@@ -1197,9 +1231,12 @@ const gradingRouter = router({
         carriedToMilestoneId,
       });
       await db.logActivity({ userId: input.userId, eventType: "test_out_graded", description: `Test-out graded: ${input.grade === "mastered" ? "Mastered" : "Needs Improvement"} on milestone ID ${input.milestoneId}`, moduleId: input.moduleId, milestoneId: input.milestoneId, metadata: { grade: input.grade, gradedBy: ctx.user.id } });
-      // Mastering the final outstanding test-out can be what completes onboarding.
+      // Mastering the final outstanding test-out can complete onboarding;
+      // a needs-improvement after completion reopens it. Both apply to any track.
       if (input.grade === "mastered") {
         await maybeCompleteOnboarding(input.userId);
+      } else {
+        await maybeReopenOnboarding(input.userId);
       }
       return gradeResult;
     }),
