@@ -1173,6 +1173,24 @@ export async function getModuleSops(moduleId: number) {
     .orderBy(moduleSops.sortOrder);
 }
 
+/** All modules (used for bulk operations like keyword search). */
+export async function getAllModules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(modules);
+}
+
+/** Link an SOP to a module as a "Related SOP". No-op if the link already exists. Returns true if newly linked. */
+export async function linkModuleToSop(moduleId: number, sopId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const existing = await db.select().from(moduleSops)
+    .where(and(eq(moduleSops.moduleId, moduleId), eq(moduleSops.sopId, sopId))).limit(1);
+  if (existing[0]) return false;
+  await db.insert(moduleSops).values({ moduleId, sopId });
+  return true;
+}
+
 // ─── Library Videos ───────────────────────────────────────────────────────────
 
 export async function getLibraryVideos(opts: { search?: string; category?: string } = {}): Promise<LibraryVideo[]> {

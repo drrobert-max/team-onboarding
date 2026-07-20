@@ -86,6 +86,26 @@ async function startServer() {
   });
   // Scheduled SOP sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/sop-sync", scheduledSopSyncHandler);
+  // One-off maintenance: add a Google Doc as an SOP and link it to modules that
+  // mention a keyword. Gated by the SETUP_SECRET header (admin/operator only).
+  app.post("/api/admin/attach-sop", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { docId, title, category, keyword, apply } = req.body ?? {};
+      if (!docId || !title || !category || !keyword) {
+        return res.status(400).json({ error: "docId, title, category and keyword are required" });
+      }
+      const { runAttachSopToModules } = await import("../attachSop");
+      const result = await runAttachSopToModules({ docId, title, category, keyword, apply: !!apply });
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      console.error("[AttachSop] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // Scheduled Library sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/library-sync", async (_req, res) => {
     try {
