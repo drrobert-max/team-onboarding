@@ -37,6 +37,11 @@ function getTransport() {
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user: gmailUser, pass: gmailPass },
+    // Fail fast instead of hanging ~60s when outbound SMTP is blocked/unreachable
+    // (e.g. Railway blocks SMTP), so email never stalls a request.
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 6000,
   });
 }
 

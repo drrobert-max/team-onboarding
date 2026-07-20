@@ -75,7 +75,7 @@ const authRouter = router({
       const expiresAt = resetTokenExpiresAt();
       await db.setResetToken(user.id, token, expiresAt);
       const resetUrl = `${input.origin}/reset-password?token=${token}`;
-      try { await sendPasswordResetEmail(user.email!, user.name ?? "", resetUrl); } catch (e) { console.error("[Auth] Reset email failed:", e); }
+      sendPasswordResetEmail(user.email!, user.name ?? "", resetUrl).catch((e) => console.error("[Auth] Reset email failed:", e));
       return { success: true };
     }),
 
@@ -1301,18 +1301,15 @@ const submissionsRouter = router({
           relatedId: q.id,
         });
       }
-      // Email notification to owner
-      try {
-        await sendQuestionNotificationEmail(
-          ctx.user.email ?? '',
-          ctx.user.name ?? 'A trainee',
-          input.question,
-          input.moduleName ?? null,
-          q.id
-        );
-      } catch (e) {
-        console.error('[Submissions] Question email notification failed:', e);
-      }
+      // Email notification to owner — fire-and-forget so a slow/blocked email
+      // never holds up the trainee's submission (in-app notification already sent).
+      sendQuestionNotificationEmail(
+        ctx.user.email ?? '',
+        ctx.user.name ?? 'A trainee',
+        input.question,
+        input.moduleName ?? null,
+        q.id
+      ).catch((e) => console.error('[Submissions] Question email notification failed:', e));
       return q;
     }),
 
@@ -1353,17 +1350,13 @@ const submissionsRouter = router({
         // Email the trainee
         const trainee = await db.getUserById(q.userId);
         if (trainee?.email) {
-          try {
-            await sendQuestionAnsweredEmail(
-              trainee.email,
-              trainee.name ?? 'Trainee',
-              q.question,
-              input.reply,
-              ctx.user.name ?? 'Leadership'
-            );
-          } catch (e) {
-            console.error('[Submissions] Question answered email failed:', e);
-          }
+          sendQuestionAnsweredEmail(
+            trainee.email,
+            trainee.name ?? 'Trainee',
+            q.question,
+            input.reply,
+            ctx.user.name ?? 'Leadership'
+          ).catch((e) => console.error('[Submissions] Question answered email failed:', e));
         }
       }
       return { success: true };
@@ -1401,18 +1394,15 @@ const submissionsRouter = router({
           relatedId: v.id,
         });
       }
-      // Email notification to owner
-      try {
-        await sendVideoNotificationEmail(
-          ctx.user.email ?? '',
-          ctx.user.name ?? 'A trainee',
-          input.title,
-          input.moduleName ?? null,
-          v.id
-        );
-      } catch (e) {
-        console.error('[Submissions] Video email notification failed:', e);
-      }
+      // Email notification to owner — fire-and-forget so a slow/blocked email
+      // never holds up the trainee's submission (in-app notification already sent).
+      sendVideoNotificationEmail(
+        ctx.user.email ?? '',
+        ctx.user.name ?? 'A trainee',
+        input.title,
+        input.moduleName ?? null,
+        v.id
+      ).catch((e) => console.error('[Submissions] Video email notification failed:', e));
       return v;
     }),
 
@@ -1473,7 +1463,7 @@ const submissionsRouter = router({
             });
             const trainee = await db.getUserById(q.userId);
             if (trainee?.email) {
-              await sendQuestionReplyEmail({
+              sendQuestionReplyEmail({
                 toEmail: trainee.email,
                 toName: trainee.name ?? 'Trainee',
                 fromName: ctx.user.name ?? 'Leadership',
@@ -1633,17 +1623,13 @@ const submissionsRouter = router({
         // Email the trainee
         const trainee = await db.getUserById(v.userId);
         if (trainee?.email) {
-          try {
-            await sendVideoReviewedEmail(
-              trainee.email,
-              trainee.name ?? 'Trainee',
-              v.title,
-              input.feedback ?? null,
-              ctx.user.name ?? 'Leadership'
-            );
-          } catch (e) {
-            console.error('[Submissions] Video reviewed email failed:', e);
-          }
+          sendVideoReviewedEmail(
+            trainee.email,
+            trainee.name ?? 'Trainee',
+            v.title,
+            input.feedback ?? null,
+            ctx.user.name ?? 'Leadership'
+          ).catch((e) => console.error('[Submissions] Video reviewed email failed:', e));
         }
       }
       return { success: true };
