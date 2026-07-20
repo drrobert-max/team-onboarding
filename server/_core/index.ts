@@ -174,6 +174,33 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: build weekly test-out milestones (and their graded
+  // skill modules) into a track, plus optional regular training modules. Gated
+  // by the SETUP_SECRET header. Dry run when apply=false (reports current track
+  // structure + the plan without writing). Idempotent on re-apply.
+  app.post("/api/admin/build-testouts", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { teamRole, weeks, trainingModules, apply } = req.body ?? {};
+      if (!teamRole || !Array.isArray(weeks)) {
+        return res.status(400).json({ error: "teamRole and weeks[] are required" });
+      }
+      const { runBuildTestOuts } = await import("../buildTestOuts");
+      const result = await runBuildTestOuts({
+        teamRole,
+        weeks,
+        trainingModules: Array.isArray(trainingModules) ? trainingModules : [],
+        apply: !!apply,
+      });
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      console.error("[BuildTestOuts] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // Scheduled Library sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/library-sync", async (_req, res) => {
     try {
