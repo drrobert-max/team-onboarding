@@ -1180,6 +1180,13 @@ export async function getAllModules() {
   return db.select().from(modules);
 }
 
+/** Update a module's Loom video (used for bulk "replace this video everywhere"). */
+export async function updateModuleLoom(moduleId: number, loomUrl: string, loomVideoId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(modules).set({ loomUrl, loomVideoId, updatedAt: new Date() }).where(eq(modules.id, moduleId));
+}
+
 /** Link an SOP to a module as a "Related SOP". No-op if the link already exists. Returns true if newly linked. */
 export async function linkModuleToSop(moduleId: number, sopId: number): Promise<boolean> {
   const db = await getDb();

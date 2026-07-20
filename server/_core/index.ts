@@ -106,6 +106,44 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: replace the Loom video on every module whose title
+  // matches a keyword. Gated by the SETUP_SECRET header. Dry run when apply=false.
+  app.post("/api/admin/update-module-loom", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { keyword, loomUrl, apply } = req.body ?? {};
+      if (!keyword || !loomUrl) {
+        return res.status(400).json({ error: "keyword and loomUrl are required" });
+      }
+      const db = await import("../db");
+      const loomVideoId = String(loomUrl).split("?")[0].replace(/\/+$/, "").split("/").pop() || "";
+      const kw = String(keyword).toLowerCase();
+      const all = await db.getAllModules();
+      const matched = all.filter((m: any) => (m.title ?? "").toLowerCase().includes(kw));
+      let updated = 0;
+      if (apply) {
+        for (const m of matched) {
+          await db.updateModuleLoom(m.id, String(loomUrl), loomVideoId);
+          updated++;
+        }
+      }
+      res.json({
+        ok: true,
+        loomVideoId,
+        keyword,
+        applied: !!apply,
+        updated,
+        matchedCount: matched.length,
+        matchedModules: matched.map((m: any) => ({ id: m.id, title: m.title, type: m.type, currentLoom: m.loomUrl })),
+      });
+    } catch (e: any) {
+      console.error("[UpdateModuleLoom] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // Scheduled Library sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/library-sync", async (_req, res) => {
     try {
