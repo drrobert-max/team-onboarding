@@ -11,6 +11,57 @@ import { hashPassword, verifyPassword, generateResetToken, resetTokenExpiresAt, 
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
 
+/**
+ * Mark a trainee's onboarding complete only when BOTH conditions hold:
+ *   1. every module in their track is completed, and
+ *   2. every test-out skill is graded "mastered".
+ * Idempotent — does nothing if there's no track/role or it's already complete.
+ * Called after a module is completed AND after a test-out is graded mastered,
+ * since either can be the last thing that makes a trainee truly "done".
+ */
+async function maybeCompleteOnboarding(userId: number): Promise<void> {
+  const user = await db.getUserById(userId);
+  if (!user || !user.teamRole || user.onboardingCompletedAt) return;
+
+  const track = await db.getTrackByRole(user.teamRole);
+  if (!track) return;
+
+  const mss = await db.getMilestonesByTrack(track.id);
+  const allModuleIds: number[] = [];
+  for (const ms of mss) {
+    const mods = await db.getModulesByMilestone(ms.id);
+    allModuleIds.push(...mods.map(m => m.id));
+  }
+  if (allModuleIds.length === 0) return;
+
+  const progress = await db.getUserProgress(userId);
+  const completedCount = progress.filter(
+    p => p.status === "completed" && allModuleIds.includes(p.moduleId)
+  ).length;
+  if (completedCount !== allModuleIds.length) return;
+
+  // All modules done — now require all test-outs mastered before "complete".
+  const testOutsMastered = await db.areTestOutsMastered(userId, track.id);
+  if (!testOutsMastered) return;
+
+  const dbConn = await db.getDb();
+  if (dbConn) {
+    const { users } = await import("../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    await dbConn.update(users).set({ onboardingCompletedAt: new Date() }).where(eq(users.id, userId));
+  }
+  notifyOwner({
+    title: `🎉 ${user.name} completed onboarding!`,
+    content: `${user.name} (${user.email}) has completed their full ${user.teamRole} onboarding track — all modules done and all test-outs mastered.`,
+  }).catch(() => {});
+  await db.createNotification({
+    userId,
+    type: "onboarding_complete",
+    title: "Congratulations! You've completed onboarding.",
+    message: "You've completed every module and mastered every test-out in your track. Welcome to the Reformation team!",
+  });
+}
+
 // ─── Storage Router ─────────────────────────────────────────────────────────
 const storageRouter = router({
   presign: protectedProcedure
@@ -749,40 +800,10 @@ const progressRouter = router({
         await db.logActivity({ userId: ctx.user.id, eventType: "module_started", description: `Started module ID ${input.moduleId}`, moduleId: input.moduleId });
       }
 
-      // Check if all modules in track are complete
-      if (input.status === "completed" && ctx.user.teamRole) {
-        const track = await db.getTrackByRole(ctx.user.teamRole);
-        if (track) {
-          const mss = await db.getMilestonesByTrack(track.id);
-          let totalModules = 0;
-          const allModuleIds: number[] = [];
-          for (const ms of mss) {
-            const mods = await db.getModulesByMilestone(ms.id);
-            totalModules += mods.length;
-            allModuleIds.push(...mods.map(m => m.id));
-          }
-          const progress = await db.getUserProgress(ctx.user.id);
-          const completedCount = progress.filter(p => p.status === "completed" && allModuleIds.includes(p.moduleId)).length;
-          if (completedCount === totalModules) {
-            // Mark onboarding complete
-            const dbConn = await db.getDb();
-            if (dbConn) {
-              const { users } = await import("../drizzle/schema");
-              const { eq } = await import("drizzle-orm");
-              await dbConn.update(users).set({ onboardingCompletedAt: new Date() }).where(eq(users.id, ctx.user.id));
-            }
-            await notifyOwner({
-              title: `🎉 ${ctx.user.name} completed onboarding!`,
-              content: `${ctx.user.name} (${ctx.user.email}) has completed their full ${ctx.user.teamRole} onboarding track.`,
-            });
-            await db.createNotification({
-              userId: ctx.user.id,
-              type: "onboarding_complete",
-              title: "Congratulations! You've completed onboarding.",
-              message: "You have successfully completed all modules in your onboarding track. Welcome to the Reformation team!",
-            });
-          }
-        }
+      // Completing a module may be the last step of onboarding — but only if
+      // every test-out is also mastered (see maybeCompleteOnboarding).
+      if (input.status === "completed") {
+        await maybeCompleteOnboarding(ctx.user.id);
       }
       return { success: true };
     }),
@@ -1176,6 +1197,10 @@ const gradingRouter = router({
         carriedToMilestoneId,
       });
       await db.logActivity({ userId: input.userId, eventType: "test_out_graded", description: `Test-out graded: ${input.grade === "mastered" ? "Mastered" : "Needs Improvement"} on milestone ID ${input.milestoneId}`, moduleId: input.moduleId, milestoneId: input.milestoneId, metadata: { grade: input.grade, gradedBy: ctx.user.id } });
+      // Mastering the final outstanding test-out can be what completes onboarding.
+      if (input.grade === "mastered") {
+        await maybeCompleteOnboarding(input.userId);
+      }
       return gradeResult;
     }),
 

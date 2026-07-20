@@ -37,6 +37,8 @@ vi.mock("./db", () => ({
   flagSopForAllUsers: vi.fn().mockResolvedValue(undefined),
   upsertSop: vi.fn().mockResolvedValue(undefined),
   getUserByEmail: vi.fn().mockResolvedValue(null),
+  getUserById: vi.fn().mockResolvedValue(null),
+  areTestOutsMastered: vi.fn().mockResolvedValue(true),
   createUserWithPassword: vi.fn().mockResolvedValue({
     id: 2, email: "new@reformationchiropractic.com", name: "New Hire", role: "user", teamRole: "ca",
   }),
@@ -145,6 +147,48 @@ describe("progress router", () => {
     const caller = appRouter.createCaller(ctx);
     const result = await caller.progress.update({ moduleId: 1, status: "in_progress" });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("onboarding completion gate", () => {
+  // A track with one module that the trainee has just completed, plus a track
+  // and user that are otherwise ready to be marked "complete".
+  async function primeReadyToComplete() {
+    const dbm = await import("./db");
+    vi.mocked(dbm.getUserById).mockResolvedValue({
+      id: 1, name: "Test User", email: "test@reformationchiropractic.com",
+      teamRole: "ca", onboardingCompletedAt: null,
+    } as any);
+    vi.mocked(dbm.getTrackByRole).mockResolvedValue({ id: 5, teamRole: "ca", name: "CA" } as any);
+    vi.mocked(dbm.getMilestonesByTrack).mockResolvedValue([{ id: 50 } as any]);
+    vi.mocked(dbm.getModulesByMilestone).mockResolvedValue([{ id: 1 } as any]);
+    vi.mocked(dbm.getUserProgress).mockResolvedValue([{ moduleId: 1, status: "completed" } as any]);
+    vi.mocked(dbm.createNotification).mockClear();
+    return dbm;
+  }
+
+  it("does NOT complete onboarding while a test-out is unmastered", async () => {
+    const dbm = await primeReadyToComplete();
+    vi.mocked(dbm.areTestOutsMastered).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(makeCtx());
+    await caller.progress.update({ moduleId: 1, status: "completed" });
+
+    const firedComplete = vi.mocked(dbm.createNotification).mock.calls
+      .some(c => (c[0] as any)?.type === "onboarding_complete");
+    expect(firedComplete).toBe(false);
+  });
+
+  it("completes onboarding once all modules done AND all test-outs mastered", async () => {
+    const dbm = await primeReadyToComplete();
+    vi.mocked(dbm.areTestOutsMastered).mockResolvedValue(true);
+
+    const caller = appRouter.createCaller(makeCtx());
+    await caller.progress.update({ moduleId: 1, status: "completed" });
+
+    const firedComplete = vi.mocked(dbm.createNotification).mock.calls
+      .some(c => (c[0] as any)?.type === "onboarding_complete");
+    expect(firedComplete).toBe(true);
   });
 });
 

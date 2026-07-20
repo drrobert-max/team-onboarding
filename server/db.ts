@@ -608,6 +608,36 @@ export async function getTestOutGradesForMilestone(userId: number, milestoneId: 
     .where(and(eq(testOutGrades.userId, userId), eq(testOutGrades.milestoneId, milestoneId)));
 }
 
+// Keywords that mark a milestone as a test-out (kept in sync with the client's
+// TestOuts page). A test-out "passes" when every module in it is graded mastered.
+const TEST_OUT_KEYWORDS = ["test out", "check-in", "check in", "60-day", "60 day"];
+export function isTestOutTitle(title: string): boolean {
+  const l = title.toLowerCase();
+  return TEST_OUT_KEYWORDS.some(k => l.includes(k));
+}
+
+/**
+ * True when every module in every test-out milestone of the track has a
+ * "mastered" grade for this user. A track with no test-outs returns true
+ * (nothing to gate on). Used to decide whether onboarding is truly complete.
+ */
+export async function areTestOutsMastered(userId: number, trackId: number): Promise<boolean> {
+  const mss = await getMilestonesByTrack(trackId);
+  const testOutMilestones = mss.filter(ms => isTestOutTitle(ms.title));
+  if (testOutMilestones.length === 0) return true;
+  const grades = await getTestOutGradesForUser(userId);
+  const masteredSet = new Set(
+    grades.filter(g => g.grade === "mastered").map(g => `${g.moduleId}-${g.milestoneId}`)
+  );
+  for (const ms of testOutMilestones) {
+    const mods = await getModulesByMilestone(ms.id);
+    for (const mod of mods) {
+      if (!masteredSet.has(`${mod.id}-${ms.id}`)) return false;
+    }
+  }
+  return true;
+}
+
 // ─── All SOPs with Category (for binder selection) ────────────────────────────
 export async function getAllSopsWithCategory() {
   const db = await getDb();
