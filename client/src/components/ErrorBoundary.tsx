@@ -21,6 +21,22 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error) {
+    // A failed dynamic import almost always means a stale code-split chunk after
+    // a new deploy (its hashed filename was replaced). Reload once to pick up the
+    // current build instead of showing the error screen. The timestamp guard
+    // prevents a reload loop if the module is genuinely missing.
+    const msg = error?.message || "";
+    if (/dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)) {
+      const KEY = "chunk-reload-at";
+      const last = Number(sessionStorage.getItem(KEY) || 0);
+      if (Date.now() - last > 10_000) {
+        sessionStorage.setItem(KEY, String(Date.now()));
+        window.location.reload();
+      }
+    }
+  }
+
   render() {
     if (this.state.hasError) {
       return (
