@@ -1267,6 +1267,12 @@ export async function getLibraryCategories(): Promise<string[]> {
   return rows.map(r => r.category);
 }
 
+export async function deleteLibraryVideoById(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(libraryVideos).where(eq(libraryVideos.id, id));
+}
+
 export async function upsertLibraryVideo(video: {
   driveFileId: string;
   name: string;

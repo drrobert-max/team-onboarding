@@ -201,6 +201,56 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: list or delete Learning Library rows. Gated by the
+  // SETUP_SECRET header. Used to remove stale entries the sync won't prune
+  // (a video removed from Drive leaves an orphaned row). Dry run when apply=false.
+  app.post("/api/admin/library-maintenance", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { action, id, match, apply } = req.body ?? {};
+      const db = await import("../db");
+      const all = await db.getLibraryVideos();
+      if (action === "list") {
+        return res.json({
+          ok: true,
+          count: all.length,
+          videos: all.map((v: any) => ({ id: v.id, name: v.name, category: v.category, driveFileId: v.driveFileId })),
+        });
+      }
+      if (action === "delete") {
+        let matched: any[];
+        if (typeof id === "number") {
+          matched = all.filter((v: any) => v.id === id);
+        } else if (typeof match === "string" && match.trim()) {
+          const m = match.toLowerCase();
+          matched = all.filter((v: any) => (v.name ?? "").toLowerCase().includes(m));
+        } else {
+          return res.status(400).json({ error: "delete requires id (number) or match (string)" });
+        }
+        let deleted = 0;
+        if (apply) {
+          for (const v of matched) {
+            await db.deleteLibraryVideoById(v.id);
+            deleted++;
+          }
+        }
+        return res.json({
+          ok: true,
+          applied: !!apply,
+          deleted,
+          matchedCount: matched.length,
+          matched: matched.map((v: any) => ({ id: v.id, name: v.name, category: v.category, driveFileId: v.driveFileId })),
+        });
+      }
+      return res.status(400).json({ error: "action must be 'list' or 'delete'" });
+    } catch (e: any) {
+      console.error("[LibraryMaintenance] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // Scheduled Library sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/library-sync", async (_req, res) => {
     try {
