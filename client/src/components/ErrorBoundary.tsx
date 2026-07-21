@@ -6,6 +6,24 @@ interface Props {
   children: ReactNode;
 }
 
+/**
+ * True when an error looks like a stale code-split chunk after a deploy. Covers
+ * both the explicit dynamic-import failures AND the "reading 'default'" TypeError
+ * React throws when a lazy() route resolves to an empty/stale module — the exact
+ * error users hit when a new build lands while their tab is open.
+ */
+function isStaleChunkError(error: Error): boolean {
+  const msg = `${error?.message || ""} ${error?.stack || ""}`;
+  return (
+    /dynamically imported module/i.test(msg) ||
+    /Importing a module script failed/i.test(msg) ||
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg) ||
+    /reading '?default'?/i.test(msg) ||
+    /Unable to preload/i.test(msg)
+  );
+}
+
 interface State {
   hasError: boolean;
   error: Error | null;
@@ -25,9 +43,8 @@ class ErrorBoundary extends Component<Props, State> {
     // A failed dynamic import almost always means a stale code-split chunk after
     // a new deploy (its hashed filename was replaced). Reload once to pick up the
     // current build instead of showing the error screen. The timestamp guard
-    // prevents a reload loop if the module is genuinely missing.
-    const msg = error?.message || "";
-    if (/dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)) {
+    // prevents a reload loop if the error is genuine and survives a reload.
+    if (isStaleChunkError(error)) {
       const KEY = "chunk-reload-at";
       const last = Number(sessionStorage.getItem(KEY) || 0);
       if (Date.now() - last > 10_000) {

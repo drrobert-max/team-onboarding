@@ -2,6 +2,7 @@ import {
   boolean,
   int,
   json,
+  mediumtext,
   mysqlEnum,
   mysqlTable,
   text,
@@ -66,7 +67,7 @@ export const sops = mysqlTable("sops", {
   id: int("id").autoincrement().primaryKey(),
   categoryId: int("categoryId").notNull(),
   title: varchar("title", { length: 500 }).notNull(),
-  content: text("content").notNull(),
+  content: mediumtext("content").notNull(),
   googleDocId: varchar("googleDocId", { length: 255 }),
   lastUpdated: timestamp("lastUpdated").defaultNow().notNull(),
   version: int("version").default(1).notNull(),
@@ -83,7 +84,7 @@ export const sopVersions = mysqlTable("sop_versions", {
   id: int("id").autoincrement().primaryKey(),
   sopId: int("sopId").notNull(),
   version: int("version").notNull(),
-  content: text("content").notNull(),
+  content: mediumtext("content").notNull(),
   archivedAt: timestamp("archivedAt").defaultNow().notNull(),
 });
 
