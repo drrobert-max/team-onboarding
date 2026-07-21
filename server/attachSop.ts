@@ -1,5 +1,5 @@
 import * as db from "./db";
-import { fetchGoogleDocText } from "./googleDrive";
+import { fetchGoogleDocHtml } from "./googleDrive";
 
 // One-off maintenance helper: add a Google Doc to the SOP library and (optionally)
 // link it as a "Related SOP" to every module whose text mentions a keyword.
@@ -20,7 +20,7 @@ export async function runAttachSopToModules(opts: {
   const { docId, title, category, keyword, apply } = opts;
 
   // 1. Add / update the SOP from the Google Doc.
-  const content = await fetchGoogleDocText(docId);
+  const content = await fetchGoogleDocHtml(docId);
   const categoryId = await db.getOrCreateSopCategory(category, slugify(category));
   await db.upsertSop({ googleDocId: docId, title, content, categoryId, lastUpdated: new Date() });
   const sop = await db.getSopByGoogleDocId(docId);

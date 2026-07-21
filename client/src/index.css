@@ -388,3 +388,35 @@ body {
 .sop-rich-content span[style*="font-style:italic"] {
   font-style: italic;
 }
+
+/* Tables imported from Google Docs (e.g. Appointment Types) — keep the doc's
+   own cell colors, add clean borders/spacing, and never overflow the page. */
+.sop-rich-content {
+  overflow-x: auto;
+}
+.sop-rich-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.85rem 0;
+  font-size: 0.85rem;
+}
+.sop-rich-content th,
+.sop-rich-content td {
+  border: 1px solid oklch(0.86 0.02 135);
+  padding: 0.45rem 0.65rem;
+  vertical-align: top;
+  text-align: left;
+}
+.sop-rich-content th,
+.sop-rich-content tr:first-child td {
+  background-color: oklch(0.96 0.012 135);
+  font-weight: 600;
+}
+.sop-rich-content img {
+  max-width: 100%;
+  height: auto;
+}
+.sop-rich-content a {
+  color: oklch(0.53 0.121 136);
+  text-decoration: underline;
+}
