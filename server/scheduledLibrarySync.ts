@@ -1,6 +1,22 @@
 import { upsertLibraryVideo } from "./db";
 
-const FOLDER_ID = "1FSs-CM6tiM0m61RLXFy2gmHN4P7LHWzv";
+// Learning-library source folders (Drive folder IDs). Each must be shared
+// "Anyone with the link → Viewer" for the public API key + in-app playback to
+// work. Extra folders can be added via LIBRARY_FOLDER_IDS (comma-separated)
+// without a code change.
+const DEFAULT_FOLDER_IDS = [
+  "1FSs-CM6tiM0m61RLXFy2gmHN4P7LHWzv", // Regulated Kids podcast/education library
+  "1RzsGhC66VdVgJpV7wfsGsylsYc1Kf7f0", // Reformation Chiropractic video series (Ep 1, Ep 2, ...)
+];
+const FOLDER_IDS = Array.from(
+  new Set([
+    ...DEFAULT_FOLDER_IDS,
+    ...(process.env.LIBRARY_FOLDER_IDS ?? "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean),
+  ])
+);
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 
 // Skip Google Workspace native formats (Docs, Sheets, Slides, Forms, etc.)
@@ -18,6 +34,7 @@ const SKIP_MIME_TYPES = new Set([
 // Auto-categorize based on video name keywords
 function categorize(name: string): string {
   const n = name.toLowerCase();
+  if (n.includes("reformation")) return "Reformation Podcast";
   if (n.includes("autism")) return "Autism";
   if (n.includes("adhd")) return "ADHD";
   if (n.includes("reflex") || n.includes("primitive")) return "Primitive Reflexes";
@@ -95,65 +112,67 @@ export async function syncLibraryVideos(): Promise<{ synced: number; errors: num
   let synced = 0;
   let errors = 0;
   let skipped = 0;
-  let pageToken: string | undefined;
   const found: string[] = [];
 
-  try {
-    do {
-      const params = new URLSearchParams({
-        q: `"${FOLDER_ID}" in parents and trashed = false`,
-        fields: "nextPageToken,files(id,name,mimeType,createdTime)",
-        pageSize: "100",
-        ...(pageToken ? { pageToken } : {}),
-        ...(!token && apiKey ? { key: apiKey } : {}),
-      });
+  for (const folderId of FOLDER_IDS) {
+    let pageToken: string | undefined;
+    try {
+      do {
+        const params = new URLSearchParams({
+          q: `"${folderId}" in parents and trashed = false`,
+          fields: "nextPageToken,files(id,name,mimeType,createdTime)",
+          pageSize: "100",
+          ...(pageToken ? { pageToken } : {}),
+          ...(!token && apiKey ? { key: apiKey } : {}),
+        });
 
-      const res = await fetch(`${DRIVE_API_BASE}/files?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+        const res = await fetch(`${DRIVE_API_BASE}/files?${params}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
 
-      if (!res.ok) {
-        const body = await res.text();
-        console.error("[LibrarySync] Drive API error:", res.status, body);
-        errors++;
-        break;
-      }
-
-      const data = await res.json() as {
-        files: Array<{ id: string; name: string; mimeType: string; createdTime: string }>;
-        nextPageToken?: string;
-      };
-
-      pageToken = data.nextPageToken;
-      console.log(`[LibrarySync] Found ${data.files?.length ?? 0} files in this page`);
-
-      for (const file of data.files ?? []) {
-        console.log(`[LibrarySync] File: "${file.name}" | mimeType: ${file.mimeType}`);
-        found.push(`${file.name} (${file.mimeType})`);
-
-        if (SKIP_MIME_TYPES.has(file.mimeType)) {
-          console.log(`[LibrarySync] Skipping Google Workspace file: ${file.name}`);
-          skipped++;
-          continue;
-        }
-
-        try {
-          await upsertLibraryVideo({
-            driveFileId: file.id,
-            name: file.name,
-            category: categorize(file.name),
-            driveCreatedAt: file.createdTime ? new Date(file.createdTime) : null,
-          });
-          synced++;
-        } catch (e) {
-          console.error("[LibrarySync] Failed to upsert:", file.name, e);
+        if (!res.ok) {
+          const body = await res.text();
+          console.error(`[LibrarySync] Drive API error for folder ${folderId}:`, res.status, body);
           errors++;
+          break;
         }
-      }
-    } while (pageToken);
-  } catch (e) {
-    console.error("[LibrarySync] Unexpected error:", e);
-    errors++;
+
+        const data = await res.json() as {
+          files: Array<{ id: string; name: string; mimeType: string; createdTime: string }>;
+          nextPageToken?: string;
+        };
+
+        pageToken = data.nextPageToken;
+        console.log(`[LibrarySync] Folder ${folderId}: found ${data.files?.length ?? 0} files in this page`);
+
+        for (const file of data.files ?? []) {
+          console.log(`[LibrarySync] File: "${file.name}" | mimeType: ${file.mimeType}`);
+          found.push(`${file.name} (${file.mimeType})`);
+
+          if (SKIP_MIME_TYPES.has(file.mimeType)) {
+            console.log(`[LibrarySync] Skipping Google Workspace file: ${file.name}`);
+            skipped++;
+            continue;
+          }
+
+          try {
+            await upsertLibraryVideo({
+              driveFileId: file.id,
+              name: file.name,
+              category: categorize(file.name),
+              driveCreatedAt: file.createdTime ? new Date(file.createdTime) : null,
+            });
+            synced++;
+          } catch (e) {
+            console.error("[LibrarySync] Failed to upsert:", file.name, e);
+            errors++;
+          }
+        }
+      } while (pageToken);
+    } catch (e) {
+      console.error(`[LibrarySync] Unexpected error for folder ${folderId}:`, e);
+      errors++;
+    }
   }
 
   console.log(`[LibrarySync] Done: ${synced} synced, ${skipped} skipped, ${errors} errors`);

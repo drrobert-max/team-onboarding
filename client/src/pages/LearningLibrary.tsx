@@ -21,6 +21,11 @@ function getDriveEmbedUrl(fileId: string) {
   return `https://drive.google.com/file/d/${fileId}/preview`;
 }
 
+// Drive serves a poster image for any file shared "anyone with the link".
+function getDriveThumbnailUrl(fileId: string) {
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`;
+}
+
 // Full-screen video modal
 function VideoModal({ video, onClose }: { video: Video; onClose: () => void }) {
   // Close on Escape key
@@ -84,13 +89,27 @@ function VideoModal({ video, onClose }: { video: Video; onClose: () => void }) {
 }
 
 function VideoCard({ video, onPlay }: { video: Video; onPlay: () => void }) {
+  const [thumbFailed, setThumbFailed] = useState(false);
   return (
     <Card
       className="overflow-hidden border border-border/60 hover:border-primary/40 transition-all hover:shadow-md cursor-pointer group"
       onClick={onPlay}
     >
       <div className="relative bg-muted aspect-video flex items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
+        {/* Real Drive thumbnail when available; gradient fallback otherwise */}
+        {!thumbFailed ? (
+          <img
+            src={getDriveThumbnailUrl(video.driveFileId)}
+            alt={video.name}
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={() => setThumbFailed(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
+        )}
+        {/* Play overlay — darkens slightly on hover for contrast over the poster */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         <div className="relative z-10 flex flex-col items-center gap-2">
           <div className="w-14 h-14 rounded-full bg-primary/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
             <Play className="h-6 w-6 text-white fill-white ml-1" />
