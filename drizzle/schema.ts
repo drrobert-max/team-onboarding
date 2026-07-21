@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   int,
   json,
   mediumtext,
@@ -31,6 +32,9 @@ export const users = mysqlTable("users", {
   resetToken: varchar("resetToken", { length: 128 }),
   resetTokenExpiresAt: timestamp("resetTokenExpiresAt"),
   testOutDate: timestamp("testOutDate"),
+  // Gamification: daily activity streak.
+  streakCount: int("streakCount").default(0).notNull(),
+  lastActiveDate: date("lastActiveDate", { mode: "string" }),
 });
 
 export type User = typeof users.$inferSelect;

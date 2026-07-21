@@ -162,6 +162,13 @@
       "when": 1784670681305,
       "tag": "0022_bouncy_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1784673392199,
+      "tag": "0023_abandoned_earthquake",
+      "breakpoints": true
     }
   ]
 }
