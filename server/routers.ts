@@ -561,25 +561,33 @@ const tracksRouter = router({
           }
         }
       } else {
-        return { prev: null, next: null, currentIndex: null, totalCount: null, weekLabel: null, weekNumber: null };
+        return { prev: null, next: null, currentIndex: null, totalCount: null, weekLabel: null, weekNumber: null, isTestOut: false };
       }
-      if (!track) return { prev: null, next: null, currentIndex: null, totalCount: null, weekLabel: null, weekNumber: null };
+      if (!track) return { prev: null, next: null, currentIndex: null, totalCount: null, weekLabel: null, weekNumber: null, isTestOut: false };
       const milestones = await db.getMilestonesByTrack(track.id);
-      // Flatten all modules across all milestones in order, carrying week info
-      const allModules: { id: number; title: string; weekLabel: string; weekNumber: number }[] = [];
+      // Flatten all modules across all milestones in order, tagging whether each
+      // belongs to a test-out milestone. Training and test-outs are separate
+      // flows (test-outs live on their own page and are graded, not "lessons"),
+      // so navigation and the position counter stay within the current group —
+      // otherwise the last training module wrongly offers "Next" into a test-out.
+      const allModules: { id: number; title: string; weekLabel: string; weekNumber: number; isTestOut: boolean }[] = [];
       for (const ms of milestones) {
         const mods = await db.getModulesByMilestone(ms.id);
-        allModules.push(...mods.map(m => ({ id: m.id, title: m.title, weekLabel: ms.title, weekNumber: ms.weekNumber })));
+        const isTestOut = db.isTestOutTitle(ms.title);
+        allModules.push(...mods.map(m => ({ id: m.id, title: m.title, weekLabel: ms.title, weekNumber: ms.weekNumber, isTestOut })));
       }
-      const idx = allModules.findIndex(m => m.id === input.moduleId);
-      const current = allModules[idx];
+      const currentAll = allModules.find(m => m.id === input.moduleId);
+      const group = allModules.filter(m => m.isTestOut === (currentAll?.isTestOut ?? false));
+      const idx = group.findIndex(m => m.id === input.moduleId);
+      const current = group[idx];
       return {
-        prev: idx > 0 ? allModules[idx - 1] : null,
-        next: idx >= 0 && idx < allModules.length - 1 ? allModules[idx + 1] : null,
+        prev: idx > 0 ? group[idx - 1] : null,
+        next: idx >= 0 && idx < group.length - 1 ? group[idx + 1] : null,
         currentIndex: idx + 1,
-        totalCount: allModules.length,
+        totalCount: group.length,
         weekLabel: current?.weekLabel ?? null,
         weekNumber: current?.weekNumber ?? null,
+        isTestOut: currentAll?.isTestOut ?? false,
       };
     }),
 

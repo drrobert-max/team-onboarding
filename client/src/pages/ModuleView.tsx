@@ -394,7 +394,9 @@ export default function ModuleView() {
             <div className="flex flex-col items-center gap-0.5 text-center">
               <span className="text-xs font-semibold text-primary">{adjacent.weekLabel}</span>
               {adjacent.currentIndex != null && adjacent.totalCount != null && (
-                <span className="text-xs text-muted-foreground">Lesson {adjacent.currentIndex} of {adjacent.totalCount}</span>
+                <span className="text-xs text-muted-foreground">
+                  {(adjacent as any).isTestOut ? "Skill" : "Lesson"} {adjacent.currentIndex} of {adjacent.totalCount}
+                </span>
               )}
             </div>
           )}
