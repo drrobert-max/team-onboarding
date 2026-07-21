@@ -94,3 +94,63 @@ export async function fetchGoogleDocText(googleDocId: string): Promise<string> {
   }
   return text.replace(/^﻿/, "").replace(/\r\n/g, "\n").trim();
 }
+
+/**
+ * Fetch a Google Doc as HTML (preserving tables, headings, colors, bold/italic)
+ * and return a self-contained fragment safe to render inside the app's
+ * `.sop-rich-content` container: the doc's own <style> is scoped under that
+ * class so it can't leak into the rest of the page, scripts/imports are
+ * stripped, and only the <body> markup is kept. Plain-text export throws away
+ * this structure, which is why SOPs looked like a wall of text.
+ */
+export async function fetchGoogleDocHtml(googleDocId: string): Promise<string> {
+  const url = `https://docs.google.com/document/d/${googleDocId}/export?format=html`;
+  const resp = await fetch(url, { redirect: "follow" });
+  if (!resp.ok) {
+    throw new Error(`export fetch failed (HTTP ${resp.status}) — is the folder shared "anyone with link: viewer"?`);
+  }
+  const html = await resp.text();
+  // A private doc redirects to a Google sign-in page rather than the document.
+  if (/ServiceLogin|gaia_loginform|accounts\.google\.com\/(?:v3\/)?signin/i.test(html)) {
+    throw new Error(`doc is not publicly accessible — share the folder "anyone with link: viewer"`);
+  }
+  return sanitizeGoogleDocHtml(html);
+}
+
+/** Scope one CSS text under `.sop-rich-content` and drop @import lines. */
+function scopeCss(css: string): string {
+  return css
+    .replace(/@import[^;]+;/gi, "")
+    .replace(/([^{}]+)\{([^}]*)\}/g, (_full, sel: string, rules: string) => {
+      const s = sel.trim();
+      if (!s) return "";
+      if (s.startsWith("@")) return `${s}{${rules}}`; // leave at-rules unscoped
+      const scoped = s
+        .split(",")
+        .map((part) => {
+          const p = part.trim();
+          if (!p) return "";
+          return /^body$/i.test(p) ? ".sop-rich-content" : `.sop-rich-content ${p}`;
+        })
+        .filter(Boolean)
+        .join(", ");
+      return `${scoped}{${rules}}`;
+    });
+}
+
+/** Turn a full Google Docs HTML export into a scoped, script-free fragment. */
+export function sanitizeGoogleDocHtml(html: string): string {
+  const styleBlocks: string[] = [];
+  const styleRe = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = styleRe.exec(html))) styleBlocks.push(m[1]);
+  const scopedCss = styleBlocks.map(scopeCss).join("\n").trim();
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let body = (bodyMatch ? bodyMatch[1] : html)
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
+
+  return (scopedCss ? `<style>${scopedCss}</style>\n` : "") + body;
+}

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import * as db from "./db";
-import { listDriveChildren, fetchGoogleDocText, FOLDER_MIME, DOC_MIME } from "./googleDrive";
+import { listDriveChildren, fetchGoogleDocHtml, FOLDER_MIME, DOC_MIME } from "./googleDrive";
 import { sendSopUpdatedEmail } from "./emailAuth";
 
 // The top-level Google Drive folder that holds the SOP library. Its subfolders
@@ -40,14 +40,19 @@ export async function syncSopsFromDrive(): Promise<SopSyncResult> {
   const syncDocs = async (docs: { id: string; name: string }[], categoryId: number) => {
     for (const doc of docs) {
       try {
-        const content = await fetchGoogleDocText(doc.id);
+        const content = await fetchGoogleDocHtml(doc.id);
         const existing = await db.getSopByGoogleDocId(doc.id);
         if (existing) {
           if (existing.content !== content) {
-            // upsertSop re-versions + sets flaggedForReview when content differs.
             await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
-            await db.flagSopForAllUsers(existing.id, "SOP updated — please re-review");
-            changed.push({ id: existing.id, title: doc.name });
+            // A plain-text → HTML change is the one-time formatting migration, not
+            // a real content edit — store it but don't flag/notify everyone.
+            const isFormatMigration =
+              !existing.content.trimStart().startsWith("<") && content.trimStart().startsWith("<");
+            if (!isFormatMigration) {
+              await db.flagSopForAllUsers(existing.id, "SOP updated — please re-review");
+              changed.push({ id: existing.id, title: doc.name });
+            }
             updated++;
           }
           // Keep category/title aligned with Drive — this also repairs any SOP

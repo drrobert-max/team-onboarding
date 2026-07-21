@@ -119,10 +119,10 @@ async function startServer() {
         return res.status(400).json({ error: "oldDocId, newDocId and title are required" });
       }
       const db = await import("../db");
-      const { fetchGoogleDocText } = await import("../googleDrive");
+      const { fetchGoogleDocHtml } = await import("../googleDrive");
       const sop = await db.getSopByGoogleDocId(oldDocId);
       if (!sop) return res.status(404).json({ error: "No SOP found for oldDocId" });
-      const content = await fetchGoogleDocText(newDocId);
+      const content = await fetchGoogleDocHtml(newDocId);
       await db.repointSop(sop.id, { googleDocId: newDocId, title, content });
       res.json({ ok: true, sopId: sop.id, title, from: oldDocId, to: newDocId });
     } catch (e: any) {
@@ -198,6 +198,120 @@ async function startServer() {
       res.json({ ok: true, ...result });
     } catch (e: any) {
       console.error("[BuildTestOuts] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+  // One-off maintenance: re-pull SOP content from Google Docs as rich HTML
+  // (tables/colors/structure) instead of stripped plain text. Gated by the
+  // SETUP_SECRET header. Dry run when apply=false. Quiet — updates content
+  // without flagging staff to re-review (this is a formatting migration).
+  app.post("/api/admin/resync-sops-html", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { sopId, sopMatch, all, apply } = req.body ?? {};
+      const db = await import("../db");
+      const { fetchGoogleDocHtml } = await import("../googleDrive");
+      const allSops = await db.getAllSops();
+      let targets: any[];
+      if (typeof sopId === "number") {
+        targets = allSops.filter((s: any) => s.id === sopId);
+      } else if (typeof sopMatch === "string" && sopMatch.trim()) {
+        const m = sopMatch.toLowerCase();
+        targets = allSops.filter((s: any) => (s.title ?? "").toLowerCase().includes(m));
+      } else if (all) {
+        targets = allSops;
+      } else {
+        return res.status(400).json({ error: "sopId, sopMatch, or all:true required" });
+      }
+      let updated = 0;
+      const results: any[] = [];
+      for (const sop of targets) {
+        if (!sop.googleDocId) {
+          results.push({ id: sop.id, title: sop.title, status: "skipped (no googleDocId)" });
+          continue;
+        }
+        try {
+          const html = await fetchGoogleDocHtml(sop.googleDocId);
+          const changed = html !== sop.content;
+          if (apply && changed) {
+            await db.repointSop(sop.id, { googleDocId: sop.googleDocId, title: sop.title, content: html });
+            updated++;
+          }
+          results.push({
+            id: sop.id,
+            title: sop.title,
+            bytes: html.length,
+            hasTable: /<table/i.test(html),
+            status: !changed ? "already html" : apply ? "updated" : "would update",
+          });
+        } catch (e: any) {
+          results.push({ id: sop.id, title: sop.title, status: `error: ${e.message}` });
+        }
+      }
+      res.json({ ok: true, applied: !!apply, matched: targets.length, updated, sops: results });
+    } catch (e: any) {
+      console.error("[ResyncSopsHtml] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+  // One-off maintenance: delete modules by id or title match from a track.
+  // Gated by the SETUP_SECRET header. Dry run when apply=false.
+  app.post("/api/admin/delete-module", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { moduleIds, titleMatch, teamRole, apply } = req.body ?? {};
+      const db = await import("../db");
+      const all = await db.getAllModules();
+
+      // Optionally restrict to one track's modules (via its milestones).
+      let allowedMilestones: Set<number> | null = null;
+      if (typeof teamRole === "string" && teamRole.trim()) {
+        const track = await db.getTrackByRole(teamRole);
+        if (!track) return res.status(404).json({ error: `No track for teamRole "${teamRole}"` });
+        const mss = await db.getMilestonesByTrack(track.id);
+        allowedMilestones = new Set(mss.map((m: any) => m.id));
+      }
+
+      let matched: any[];
+      if (Array.isArray(moduleIds) && moduleIds.length) {
+        const idset = new Set(moduleIds.map((n: any) => Number(n)));
+        matched = all.filter((m: any) => idset.has(m.id));
+      } else if (typeof titleMatch === "string" && titleMatch.trim()) {
+        const t = titleMatch.toLowerCase();
+        matched = all.filter((m: any) => (m.title ?? "").toLowerCase().includes(t));
+      } else {
+        return res.status(400).json({ error: "moduleIds (array) or titleMatch (string) required" });
+      }
+      if (allowedMilestones) {
+        matched = matched.filter((m: any) => allowedMilestones!.has(m.milestoneId));
+      }
+
+      let deleted = 0;
+      if (apply) {
+        const { modules: modulesTable } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db2 = await db.getDb();
+        if (!db2) throw new Error("Database unavailable");
+        for (const m of matched) {
+          await db2.delete(modulesTable).where(eq(modulesTable.id, m.id));
+          deleted++;
+        }
+      }
+      res.json({
+        ok: true,
+        applied: !!apply,
+        deleted,
+        matchedCount: matched.length,
+        matched: matched.map((m: any) => ({ id: m.id, title: m.title, type: m.type, milestoneId: m.milestoneId })),
+      });
+    } catch (e: any) {
+      console.error("[DeleteModule] error:", e);
       res.status(500).json({ ok: false, error: e.message });
     }
   });
