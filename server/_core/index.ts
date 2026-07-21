@@ -211,7 +211,7 @@ async function startServer() {
       return res.status(404).json({ error: "Not found" });
     }
     try {
-      const { sopMatch, sopId, moduleMatch, moduleIds, apply } = req.body ?? {};
+      const { sopMatch, sopId, moduleMatch, moduleIds, apply, replace } = req.body ?? {};
       const db = await import("../db");
 
       // Resolve the SOP.
@@ -253,29 +253,46 @@ async function startServer() {
       }
 
       let linked = 0;
+      let unlinked = 0;
       const results: any[] = [];
       for (const mod of mods) {
         const existing = await db.getModuleSops(mod.id);
         const already = existing.some((l: any) => l.id === sop.id);
-        let status: string;
-        if (already) {
-          status = "already linked";
-        } else if (apply) {
-          await db.linkModuleToSop(mod.id, sop.id);
-          linked++;
-          status = "linked";
-        } else {
-          status = "would link";
+        // In replace mode, any other SOP currently on this module is removed.
+        const toRemove = replace ? existing.filter((l: any) => l.id !== sop.id) : [];
+
+        if (apply) {
+          for (const r of toRemove) {
+            await db.unlinkModuleFromSop(mod.id, r.id);
+            unlinked++;
+          }
+          if (!already) {
+            await db.linkModuleToSop(mod.id, sop.id);
+            linked++;
+          }
         }
-        results.push({ id: mod.id, title: mod.title, milestoneId: mod.milestoneId, status });
+
+        const status = already
+          ? (toRemove.length ? "already linked (removed others)" : "already linked")
+          : (apply ? "linked" : "would link");
+        results.push({
+          id: mod.id,
+          title: mod.title,
+          milestoneId: mod.milestoneId,
+          currentLinks: existing.map((l: any) => ({ id: l.id, title: l.title })),
+          removes: toRemove.map((l: any) => ({ id: l.id, title: l.title })),
+          status,
+        });
       }
 
       res.json({
         ok: true,
         applied: !!apply,
+        replace: !!replace,
         sop: { id: sop.id, title: sop.title },
         matchedModules: mods.length,
         linked,
+        unlinked,
         modules: results,
       });
     } catch (e: any) {

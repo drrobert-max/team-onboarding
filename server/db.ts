@@ -1241,6 +1241,13 @@ export async function linkModuleToSop(moduleId: number, sopId: number): Promise<
   return true;
 }
 
+export async function unlinkModuleFromSop(moduleId: number, sopId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(moduleSops)
+    .where(and(eq(moduleSops.moduleId, moduleId), eq(moduleSops.sopId, sopId)));
+}
+
 // ─── Library Videos ───────────────────────────────────────────────────────────
 
 export async function getLibraryVideos(opts: { search?: string; category?: string } = {}): Promise<LibraryVideo[]> {
