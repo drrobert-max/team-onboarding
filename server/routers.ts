@@ -10,6 +10,7 @@ import { notifyOwner } from "./_core/notification";
 import { hashPassword, verifyPassword, generateResetToken, resetTokenExpiresAt, sendPasswordResetEmail, sendWelcomeEmail, sendQuestionNotificationEmail, sendVideoNotificationEmail, sendQuestionAnsweredEmail, sendVideoReviewedEmail, sendQuestionReplyEmail, sendVideoReplyEmail } from "./emailAuth";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
+import { computeLevel, computeBadges, XP_PER_MODULE, dayKey, nextStreak, displayStreak } from "./gamification";
 
 /**
  * Mark a trainee's onboarding complete only when BOTH conditions hold:
@@ -1755,6 +1756,68 @@ const highlightsRouter = router({
     }),
 });
 
+// ─── Gamification Router (Phase 1) ────────────────────────────────────────────
+// XP + rank + streak + badges for the current trainee, derived from completed
+// TRAINING modules (test-outs are excluded on purpose) plus a daily streak.
+const gamificationRouter = router({
+  mine: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user.teamRole) return null; // e.g. admins with no assigned track
+    const track = await db.getTrackByRole(ctx.user.teamRole);
+    if (!track) return null;
+
+    const milestones = await db.getMilestonesByTrack(track.id);
+    const trainingIds = new Set<number>();
+    const week1Ids = new Set<number>();
+    let total = 0;
+    let week1Total = 0;
+    for (const ms of milestones) {
+      if (db.isTestOutTitle(ms.title)) continue; // gamify training only
+      const mods = await db.getModulesByMilestone(ms.id);
+      for (const mod of mods) {
+        trainingIds.add(mod.id);
+        total++;
+        if (ms.weekNumber === 1) { week1Ids.add(mod.id); week1Total++; }
+      }
+    }
+
+    const progress = await db.getUserProgress(ctx.user.id);
+    const completedIds = progress
+      .filter(p => p.status === "completed" && trainingIds.has(p.moduleId))
+      .map(p => p.moduleId);
+    const completedSet = new Set(completedIds);
+    const completed = completedSet.size;
+    const week1Done = Array.from(week1Ids).filter(id => completedSet.has(id)).length;
+
+    const xp = completed * XP_PER_MODULE;
+    const level = computeLevel(xp);
+
+    const fresh = await db.getUserById(ctx.user.id);
+    const lastKey = (fresh?.lastActiveDate as string | null) ?? null;
+    const streak = displayStreak(lastKey, fresh?.streakCount ?? 0, dayKey(new Date()));
+
+    const badges = computeBadges({ completed, total, week1Total, week1Done, streak });
+    return { ...level, xpPerModule: XP_PER_MODULE, completed, total, streak, badges };
+  }),
+
+  // Called once when the app loads to keep the daily streak current.
+  touch: protectedProcedure.mutation(async ({ ctx }) => {
+    const fresh = await db.getUserById(ctx.user.id);
+    if (!fresh) return { streak: 0 };
+    const today = dayKey(new Date());
+    const lastKey = (fresh.lastActiveDate as string | null) ?? null;
+    const streak = nextStreak(lastKey, fresh.streakCount ?? 0, today);
+    if (lastKey !== today) {
+      const dbc = await db.getDb();
+      if (dbc) {
+        const { users } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await dbc.update(users).set({ streakCount: streak, lastActiveDate: today }).where(eq(users.id, ctx.user.id));
+      }
+    }
+    return { streak };
+  }),
+});
+
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
@@ -1776,6 +1839,7 @@ export const appRouter = router({
   submissions: submissionsRouter,
   library: libraryRouter,
   highlights: highlightsRouter,
+  gamification: gamificationRouter,
 });
 export type AppRouter = typeof appRouter;
 

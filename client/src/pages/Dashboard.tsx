@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
+import GamificationCard from "@/components/GamificationCard";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
@@ -302,6 +303,9 @@ export default function Dashboard() {
               <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             </button>
           </div>
+
+          {/* ── GAMIFICATION CARD ── */}
+          {track && <GamificationCard />}
 
           {/* ── TEST-OUT COUNTDOWN CARD ── */}
           {testOutInfo && (() => {
