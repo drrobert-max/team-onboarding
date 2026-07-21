@@ -49,6 +49,79 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+const DEFAULT_FROM =
+  process.env.EMAIL_FROM ?? '"Reformation Training Hub" <selena@reformationchiropractic.com>';
+
+interface MailArgs {
+  from?: string;
+  to: string | string[];
+  cc?: string | string[];
+  replyTo?: string;
+  subject: string;
+  html: string;
+}
+
+/**
+ * Send an email through whichever transport is configured.
+ *
+ * Priority 1 — Resend HTTP API (RESEND_API_KEY). This is the path that works
+ * on Railway, which blocks outbound SMTP. Sender domain must be verified in
+ * Resend, and EMAIL_FROM should use that domain.
+ * Priority 2 — Gmail SMTP (GMAIL_APP_PASSWORD). Kept as a fallback for local/
+ * non-blocked environments; times out on Railway.
+ *
+ * Best-effort and never throws: a delivery problem must not fail the request
+ * that triggered it (callers already fire these without awaiting the result).
+ */
+export async function sendEmail(args: MailArgs): Promise<void> {
+  const from = args.from ?? DEFAULT_FROM;
+  const resendKey = process.env.RESEND_API_KEY;
+
+  if (resendKey) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: Array.isArray(args.to) ? args.to : [args.to],
+          ...(args.cc ? { cc: Array.isArray(args.cc) ? args.cc : [args.cc] } : {}),
+          ...(args.replyTo ? { reply_to: args.replyTo } : {}),
+          subject: args.subject,
+          html: args.html,
+        }),
+      });
+      if (!res.ok) {
+        console.error("[Email] Resend error:", res.status, await res.text());
+      }
+    } catch (e) {
+      console.error("[Email] Resend request failed:", e);
+    }
+    return;
+  }
+
+  if (!process.env.GMAIL_APP_PASSWORD) {
+    console.warn(`[Email] No RESEND_API_KEY or GMAIL_APP_PASSWORD — not sent: "${args.subject}"`);
+    return;
+  }
+  try {
+    const transport = getTransport();
+    await transport.sendMail({
+      from,
+      to: args.to,
+      ...(args.cc ? { cc: args.cc } : {}),
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+      subject: args.subject,
+      html: args.html,
+    });
+  } catch (e) {
+    console.error("[Email] SMTP send failed:", e);
+  }
+}
+
 /**
  * Notify a staff member that one or more SOPs were updated. Best-effort: a no-op
  * when Gmail sending isn't configured, so callers never hang or fail on it.
@@ -58,12 +131,11 @@ export async function sendSopUpdatedEmail(
   toName: string,
   sopTitles: string[]
 ): Promise<void> {
-  if (!process.env.GMAIL_APP_PASSWORD || sopTitles.length === 0) return;
-  const transport = getTransport();
+  if (sopTitles.length === 0) return;
   const items = sopTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
   const subject =
     sopTitles.length === 1 ? `SOP updated: ${sopTitles[0]}` : `${sopTitles.length} SOPs were updated`;
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: toEmail,
     subject,
@@ -85,8 +157,7 @@ export async function sendPasswordResetEmail(
   toName: string,
   resetUrl: string
 ): Promise<void> {
-  const transport = getTransport();
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: toEmail,
     subject: "Reset your password — Reformation Training Hub",
@@ -111,11 +182,10 @@ export async function sendQuestionNotificationEmail(
   moduleName: string | null,
   questionId?: number
 ): Promise<void> {
-  const transport = getTransport();
   const deepLink = questionId
     ? `${APP_BASE_URL}/admin/submissions?tab=questions&id=${questionId}`
     : `${APP_BASE_URL}/admin/submissions?tab=questions`;
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: "drrobert@reformationchiropractic.com",
     cc: "selena@reformationchiropractic.com",
@@ -146,11 +216,10 @@ export async function sendVideoNotificationEmail(
   moduleName: string | null,
   videoSubmissionId?: number
 ): Promise<void> {
-  const transport = getTransport();
   const deepLink = videoSubmissionId
     ? `${APP_BASE_URL}/admin/submissions?tab=videos&id=${videoSubmissionId}`
     : `${APP_BASE_URL}/admin/submissions?tab=videos`;
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: "drrobert@reformationchiropractic.com",
     cc: "selena@reformationchiropractic.com",
@@ -180,8 +249,7 @@ export async function sendWelcomeEmail(
   tempPassword: string,
   loginUrl: string
 ): Promise<void> {
-  const transport = getTransport();
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: toEmail,
     subject: "Welcome to Reformation Training Hub — Your Login Details",
@@ -210,8 +278,7 @@ export async function sendQuestionAnsweredEmail(
   answer: string,
   reviewerName: string
 ): Promise<void> {
-  const transport = getTransport();
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: traineeEmail,
     replyTo: "selena@reformationchiropractic.com",
@@ -242,8 +309,7 @@ export async function sendVideoReviewedEmail(
   feedback: string | null,
   reviewerName: string
 ): Promise<void> {
-  const transport = getTransport();
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: traineeEmail,
     replyTo: "selena@reformationchiropractic.com",
@@ -280,11 +346,10 @@ export async function sendQuestionReplyEmail(params: {
   replyMessage: string;
   isAdmin: boolean; // true = admin replied → link to trainee /submissions; false = trainee replied → link to admin /admin/submissions
 }): Promise<void> {
-  const transport = getTransport();
   const deepLink = params.isAdmin
     ? `${APP_BASE_URL}/submissions?tab=questions&id=${params.questionId}`
     : `${APP_BASE_URL}/admin/submissions?tab=questions&id=${params.questionId}`;
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: params.toEmail,
     replyTo: "selena@reformationchiropractic.com",
@@ -322,11 +387,10 @@ export async function sendVideoReplyEmail(params: {
   replyMessage: string;
   isAdmin: boolean;
 }): Promise<void> {
-  const transport = getTransport();
   const deepLink = params.isAdmin
     ? `${APP_BASE_URL}/submissions?tab=videos&id=${params.videoSubmissionId}`
     : `${APP_BASE_URL}/admin/submissions?tab=videos&id=${params.videoSubmissionId}`;
-  await transport.sendMail({
+  await sendEmail({
     from: '"Reformation Training Hub" <selena@reformationchiropractic.com>',
     to: params.toEmail,
     replyTo: "selena@reformationchiropractic.com",
