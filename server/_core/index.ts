@@ -201,6 +201,88 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: link an EXISTING SOP to modules by title match. Gated
+  // by the SETUP_SECRET header. Dry run when apply=false. Idempotent (skips
+  // modules already linked to the SOP). Refuses to apply if the SOP match is
+  // ambiguous — pass sopId to disambiguate.
+  app.post("/api/admin/link-sop", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { sopMatch, sopId, moduleMatch, moduleIds, apply } = req.body ?? {};
+      const db = await import("../db");
+
+      // Resolve the SOP.
+      const allSops = await db.getAllSops();
+      let sop: any;
+      if (typeof sopId === "number") {
+        sop = allSops.find((s: any) => s.id === sopId);
+        if (!sop) return res.status(404).json({ error: `No SOP with id ${sopId}` });
+      } else if (typeof sopMatch === "string" && sopMatch.trim()) {
+        const m = sopMatch.toLowerCase();
+        const matches = allSops.filter((s: any) => (s.title ?? "").toLowerCase().includes(m));
+        if (matches.length === 0) {
+          return res.status(404).json({ error: `No SOP title contains "${sopMatch}"` });
+        }
+        if (matches.length > 1) {
+          return res.json({
+            ok: false,
+            ambiguous: true,
+            message: "Multiple SOPs match — re-run with sopId to pick one.",
+            sopMatches: matches.map((s: any) => ({ id: s.id, title: s.title })),
+          });
+        }
+        sop = matches[0];
+      } else {
+        return res.status(400).json({ error: "sopMatch (string) or sopId (number) required" });
+      }
+
+      // Resolve target modules.
+      const allMods = await db.getAllModules();
+      let mods: any[];
+      if (Array.isArray(moduleIds) && moduleIds.length) {
+        const idset = new Set(moduleIds.map((n: any) => Number(n)));
+        mods = allMods.filter((mod: any) => idset.has(mod.id));
+      } else if (typeof moduleMatch === "string" && moduleMatch.trim()) {
+        const mm = moduleMatch.toLowerCase();
+        mods = allMods.filter((mod: any) => (mod.title ?? "").toLowerCase().includes(mm));
+      } else {
+        return res.status(400).json({ error: "moduleMatch (string) or moduleIds (array) required" });
+      }
+
+      let linked = 0;
+      const results: any[] = [];
+      for (const mod of mods) {
+        const existing = await db.getModuleSops(mod.id);
+        const already = existing.some((l: any) => l.id === sop.id);
+        let status: string;
+        if (already) {
+          status = "already linked";
+        } else if (apply) {
+          await db.linkModuleToSop(mod.id, sop.id);
+          linked++;
+          status = "linked";
+        } else {
+          status = "would link";
+        }
+        results.push({ id: mod.id, title: mod.title, milestoneId: mod.milestoneId, status });
+      }
+
+      res.json({
+        ok: true,
+        applied: !!apply,
+        sop: { id: sop.id, title: sop.title },
+        matchedModules: mods.length,
+        linked,
+        modules: results,
+      });
+    } catch (e: any) {
+      console.error("[LinkSop] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: list or delete Learning Library rows. Gated by the
   // SETUP_SECRET header. Used to remove stale entries the sync won't prune
   // (a video removed from Drive leaves an orphaned row). Dry run when apply=false.
