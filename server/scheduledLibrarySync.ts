@@ -1,4 +1,4 @@
-import { upsertLibraryVideo } from "./db";
+import { upsertLibraryVideo, getLibraryVideos, deleteLibraryVideoById } from "./db";
 
 // Learning-library source folders (Drive folder IDs). Each must be shared
 // "Anyone with the link → Viewer" for the public API key + in-app playback to
@@ -96,7 +96,7 @@ async function getToken(): Promise<string | null> {
   return null;
 }
 
-export async function syncLibraryVideos(): Promise<{ synced: number; errors: number; skipped: number; found: string[] }> {
+export async function syncLibraryVideos(): Promise<{ synced: number; errors: number; skipped: number; pruned: number; found: string[] }> {
   const token = await getToken();
   // Fallback: a plain API key can list publicly shared folders — free and
   // no OAuth setup. Set GOOGLE_API_KEY and share the folder "anyone with link".
@@ -106,13 +106,17 @@ export async function syncLibraryVideos(): Promise<{ synced: number; errors: num
     console.error(
       "[LibrarySync] No Google auth — set GOOGLE_API_KEY (public folder) or GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN"
     );
-    return { synced: 0, errors: 1, skipped: 0, found: [] };
+    return { synced: 0, errors: 1, skipped: 0, pruned: 0, found: [] };
   }
 
   let synced = 0;
   let errors = 0;
   let skipped = 0;
+  let pruned = 0;
   const found: string[] = [];
+  // Every Drive file id seen this run (across all folders). Used to prune rows
+  // whose source video no longer exists — but only when the run was clean.
+  const seenFileIds = new Set<string>();
 
   for (const folderId of FOLDER_IDS) {
     let pageToken: string | undefined;
@@ -148,6 +152,7 @@ export async function syncLibraryVideos(): Promise<{ synced: number; errors: num
         for (const file of data.files ?? []) {
           console.log(`[LibrarySync] File: "${file.name}" | mimeType: ${file.mimeType}`);
           found.push(`${file.name} (${file.mimeType})`);
+          seenFileIds.add(file.id);
 
           if (SKIP_MIME_TYPES.has(file.mimeType)) {
             console.log(`[LibrarySync] Skipping Google Workspace file: ${file.name}`);
@@ -175,6 +180,26 @@ export async function syncLibraryVideos(): Promise<{ synced: number; errors: num
     }
   }
 
-  console.log(`[LibrarySync] Done: ${synced} synced, ${skipped} skipped, ${errors} errors`);
-  return { synced, errors, skipped, found };
+  // Prune orphans: remove library rows whose source video is no longer in any
+  // folder. SAFETY: only when the run was fully clean (no listing errors) and we
+  // actually saw files — otherwise a transient Drive/auth failure could wrongly
+  // wipe valid videos, so we skip pruning and leave the library untouched.
+  if (errors === 0 && seenFileIds.size > 0) {
+    try {
+      const existing = await getLibraryVideos();
+      const orphans = existing.filter(v => !seenFileIds.has(v.driveFileId));
+      for (const o of orphans) {
+        await deleteLibraryVideoById(o.id);
+        pruned++;
+        console.log(`[LibrarySync] Pruned orphaned video: "${o.name}" (${o.driveFileId})`);
+      }
+    } catch (e) {
+      console.error("[LibrarySync] Prune step failed:", e);
+    }
+  } else {
+    console.log(`[LibrarySync] Skipping prune (errors=${errors}, seen=${seenFileIds.size}) — library left untouched.`);
+  }
+
+  console.log(`[LibrarySync] Done: ${synced} synced, ${skipped} skipped, ${pruned} pruned, ${errors} errors`);
+  return { synced, errors, skipped, pruned, found };
 }

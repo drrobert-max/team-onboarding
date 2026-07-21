@@ -146,7 +146,8 @@ export default function LearningLibrary() {
     onSuccess: (result) => {
       const foundList = (result as any).found as string[] | undefined;
       const foundMsg = foundList?.length ? `\nDrive files: ${foundList.join(' | ')}` : '';
-      toast.success(`Sync complete: ${result.synced} added/updated, ${(result as any).skipped ?? 0} skipped${foundMsg}`, { duration: 20000 });
+      const prunedMsg = (result as any).pruned ? `, ${(result as any).pruned} removed` : '';
+      toast.success(`Sync complete: ${result.synced} added/updated${prunedMsg}, ${(result as any).skipped ?? 0} skipped${foundMsg}`, { duration: 20000 });
       videosQuery.refetch();
       categoriesQuery.refetch();
     },
