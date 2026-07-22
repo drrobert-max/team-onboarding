@@ -630,8 +630,9 @@ async function startServer() {
         const toRemove = replace ? existing.filter((l: any) => l.id !== sop.id) : [];
 
         // asPrimary rewrites the module's own sopId (what the viewer renders as
-        // the primary SOP). This is separate from the moduleSops "Related SOP"
-        // links above; a module can wrongly point its sopId at another SOP.
+        // the primary SOP) and is a *distinct* operation from the moduleSops
+        // "Related SOP" links: it fixes a module that points its primary at the
+        // wrong doc, without also adding a duplicate related link for that doc.
         const primaryChanged = asPrimary && mod.sopId !== sop.id;
 
         if (apply) {
@@ -639,18 +640,19 @@ async function startServer() {
             await db.unlinkModuleFromSop(mod.id, r.id);
             unlinked++;
           }
-          if (!already) {
+          if (asPrimary) {
+            if (primaryChanged) await db.setModulePrimarySop(mod.id, sop.id);
+          } else if (!already) {
             await db.linkModuleToSop(mod.id, sop.id);
             linked++;
           }
-          if (primaryChanged) {
-            await db.setModulePrimarySop(mod.id, sop.id);
-          }
         }
 
-        const status = already
-          ? (toRemove.length ? "already linked (removed others)" : "already linked")
-          : (apply ? "linked" : "would link");
+        const status = asPrimary
+          ? (apply ? (primaryChanged ? "primary set" : "already primary") : "would set primary")
+          : already
+            ? (toRemove.length ? "already linked (removed others)" : "already linked")
+            : (apply ? "linked" : "would link");
         results.push({
           id: mod.id,
           title: mod.title,
