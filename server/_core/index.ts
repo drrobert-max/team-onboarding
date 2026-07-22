@@ -84,6 +84,67 @@ async function startServer() {
       res.status(500).json({ error: String(e) });
     }
   });
+  // ── One-time Google Drive authorization helper ──────────────────────────────
+  // Lets an operator grant the app write access to Drive (to save uploaded
+  // videos) without touching the OAuth Playground. Flow:
+  //   1. Set GOOGLE_DRIVE_CLIENT_ID/SECRET in Railway (from a Google OAuth client
+  //      whose redirect URI is this app's /api/setup/gdrive-callback).
+  //   2. Visit /api/setup/gdrive-auth?secret=SETUP_SECRET → Google consent.
+  //   3. The callback shows the refresh token to paste as GOOGLE_DRIVE_REFRESH_TOKEN.
+  const PUBLIC_URL = (process.env.PUBLIC_URL ?? "https://team-onboarding-production.up.railway.app").replace(/\/+$/, "");
+  const GDRIVE_REDIRECT = `${PUBLIC_URL}/api/setup/gdrive-callback`;
+  app.get("/api/setup/gdrive-auth", (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.query.secret !== secret) return res.status(404).send("Not found");
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    if (!clientId) return res.status(400).send("Set GOOGLE_DRIVE_CLIENT_ID in Railway first.");
+    const url =
+      "https://accounts.google.com/o/oauth2/v2/auth?" +
+      new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: GDRIVE_REDIRECT,
+        response_type: "code",
+        scope: "https://www.googleapis.com/auth/drive.file",
+        access_type: "offline",
+        prompt: "consent",
+      }).toString();
+    res.redirect(url);
+  });
+  app.get("/api/setup/gdrive-callback", async (req, res) => {
+    try {
+      const code = req.query.code as string | undefined;
+      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+      if (!code || !clientId || !clientSecret) {
+        return res.status(400).send("Missing code or client credentials.");
+      }
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code, client_id: clientId, client_secret: clientSecret,
+          redirect_uri: GDRIVE_REDIRECT, grant_type: "authorization_code",
+        }),
+      });
+      const data = (await tokenRes.json()) as any;
+      if (!data.refresh_token) {
+        return res
+          .status(400)
+          .send(`<p>No refresh token returned. Remove the app's access at myaccount.google.com/permissions and try again.</p><pre>${JSON.stringify(data, null, 2)}</pre>`);
+      }
+      res.setHeader("content-type", "text/html");
+      res.send(
+        `<div style="font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.6">
+          <h2 style="color:#2d5016">✅ Google Drive connected</h2>
+          <p>Copy this value and add it in Railway as <b>GOOGLE_DRIVE_REFRESH_TOKEN</b>:</p>
+          <textarea readonly style="width:100%;height:90px;font-family:monospace;padding:10px">${data.refresh_token}</textarea>
+          <p style="color:#666">Then message your setup contact that the token is set — that's the last step.</p>
+        </div>`
+      );
+    } catch (e: any) {
+      res.status(500).send("Error: " + e.message);
+    }
+  });
   // Scheduled SOP sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/sop-sync", scheduledSopSyncHandler);
   // One-off maintenance: add a Google Doc as an SOP and link it to modules that
