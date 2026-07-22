@@ -706,6 +706,19 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // Scheduled cleanup: purge old practice videos from Drive so storage never
+  // accumulates. Safe to call anytime; only removes reviewed/expired uploads.
+  app.post("/api/scheduled/video-cleanup", async (_req, res) => {
+    try {
+      const { cleanupOldPracticeVideos } = await import("../videoCleanup");
+      const result = await cleanupOldPracticeVideos();
+      console.log(`[VideoCleanup] deleted=${result.deleted} scanned=${result.scanned}`);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      console.error("[VideoCleanup] error:", e);
+      res.status(500).json({ ok: false, error: String(e) });
+    }
+  });
   // Scheduled Library sync endpoint (bi-weekly cron)
   app.post("/api/scheduled/library-sync", async (_req, res) => {
     try {
@@ -801,7 +814,11 @@ function registerScheduledJobs(port: number) {
   cron.schedule("30 3 * * 1", () => hit("/api/scheduled/sop-sync"), {
     timezone: "UTC",
   });
-  console.log("[Cron] Weekly library-sync and sop-sync scheduled (UTC).");
+  // Every Monday 04:00 UTC — purge old practice videos from Drive
+  cron.schedule("0 4 * * 1", () => hit("/api/scheduled/video-cleanup"), {
+    timezone: "UTC",
+  });
+  console.log("[Cron] Weekly library-sync, sop-sync, and video-cleanup scheduled (UTC).");
 }
 
 startServer().catch(console.error);
