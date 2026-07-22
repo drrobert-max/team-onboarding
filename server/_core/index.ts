@@ -270,16 +270,28 @@ async function startServer() {
       const id = req.params.id;
       if (!/^[A-Za-z0-9_-]+$/.test(id)) return res.status(400).json({ error: "bad id" });
       const { getDriveAccessToken } = await import("../googleDrive");
-      const token = await getDriveAccessToken();
       const apiKey = process.env.GOOGLE_API_KEY;
-      if (!token && !apiKey) return res.status(500).json({ error: "Drive access not configured" });
-      const url =
-        `https://www.googleapis.com/drive/v3/files/${id}?alt=media` +
-        (!token && apiKey ? `&key=${apiKey}` : "");
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      if (req.headers.range) headers["Range"] = String(req.headers.range);
-      const upstream = await fetch(url, { headers });
+      const range = req.headers.range ? String(req.headers.range) : undefined;
+      const mediaUrl = (withKey: boolean) =>
+        `https://www.googleapis.com/drive/v3/files/${id}?alt=media` + (withKey && apiKey ? `&key=${apiKey}` : "");
+      const doFetch = async (useOAuth: boolean) => {
+        const headers: Record<string, string> = {};
+        if (range) headers["Range"] = range;
+        if (useOAuth) {
+          const token = await getDriveAccessToken();
+          if (!token) return null;
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        return fetch(mediaUrl(!useOAuth), { headers });
+      };
+      // Public files (SOP/training audio) read via API key; private app-created
+      // uploads (practice videos) need the OAuth token. Try public first, then OAuth.
+      let upstream = apiKey ? await doFetch(false) : null;
+      if (!upstream || (!upstream.ok && (upstream.status === 403 || upstream.status === 404))) {
+        const oauth = await doFetch(true);
+        if (oauth) upstream = oauth;
+      }
+      if (!upstream) return res.status(500).json({ error: "Drive access not configured" });
       res.status(upstream.status);
       for (const h of ["content-type", "content-length", "accept-ranges", "content-range"]) {
         const v = upstream.headers.get(h);
@@ -567,7 +579,7 @@ async function startServer() {
       return res.status(404).json({ error: "Not found" });
     }
     try {
-      const { sopMatch, sopId, moduleMatch, moduleIds, apply, replace } = req.body ?? {};
+      const { sopMatch, sopId, moduleMatch, moduleIds, apply, replace, asPrimary } = req.body ?? {};
       const db = await import("../db");
 
       // Resolve the SOP.
@@ -617,6 +629,11 @@ async function startServer() {
         // In replace mode, any other SOP currently on this module is removed.
         const toRemove = replace ? existing.filter((l: any) => l.id !== sop.id) : [];
 
+        // asPrimary rewrites the module's own sopId (what the viewer renders as
+        // the primary SOP). This is separate from the moduleSops "Related SOP"
+        // links above; a module can wrongly point its sopId at another SOP.
+        const primaryChanged = asPrimary && mod.sopId !== sop.id;
+
         if (apply) {
           for (const r of toRemove) {
             await db.unlinkModuleFromSop(mod.id, r.id);
@@ -625,6 +642,9 @@ async function startServer() {
           if (!already) {
             await db.linkModuleToSop(mod.id, sop.id);
             linked++;
+          }
+          if (primaryChanged) {
+            await db.setModulePrimarySop(mod.id, sop.id);
           }
         }
 
@@ -635,6 +655,8 @@ async function startServer() {
           id: mod.id,
           title: mod.title,
           milestoneId: mod.milestoneId,
+          currentPrimarySopId: mod.sopId ?? null,
+          setsPrimary: asPrimary ? sop.id : undefined,
           currentLinks: existing.map((l: any) => ({ id: l.id, title: l.title })),
           removes: toRemove.map((l: any) => ({ id: l.id, title: l.title })),
           status,

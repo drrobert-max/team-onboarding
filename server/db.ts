@@ -1248,6 +1248,13 @@ export async function unlinkModuleFromSop(moduleId: number, sopId: number): Prom
     .where(and(eq(moduleSops.moduleId, moduleId), eq(moduleSops.sopId, sopId)));
 }
 
+/** Set a module's primary SOP (the `modules.sopId` column the viewer renders directly). */
+export async function setModulePrimarySop(moduleId: number, sopId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(modules).set({ sopId, updatedAt: new Date() }).where(eq(modules.id, moduleId));
+}
+
 // ─── Library Videos ───────────────────────────────────────────────────────────
 
 export async function getLibraryVideos(opts: { search?: string; category?: string } = {}): Promise<LibraryVideo[]> {

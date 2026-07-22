@@ -40,8 +40,11 @@ export async function getDriveAccessToken(): Promise<string | null> {
 
 /** List the direct children of a Drive folder, optionally filtered by mimeType. */
 export async function listDriveChildren(parentId: string, mimeType?: string): Promise<DriveFile[]> {
-  const token = await getDriveAccessToken();
+  // Public folders (SOPs, library) are read with the API key. The OAuth token
+  // (scope drive.file) can only see files the app created, so it can't list
+  // these — prefer the API key whenever it's set.
   const apiKey = process.env.GOOGLE_API_KEY;
+  const token = apiKey ? null : await getDriveAccessToken();
   if (!token && !apiKey) {
     throw new Error(
       "No Google access configured — set GOOGLE_API_KEY (for a folder shared \"anyone with link\") or OAuth credentials."
