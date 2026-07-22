@@ -201,6 +201,68 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: attach reviewed quizzes to modules (and enable them).
+  // Gated by the SETUP_SECRET header. action:"list" dumps a track's modules so
+  // targets can be chosen; otherwise each item seeds a quiz on the matched
+  // module. Dry run when apply=false. Seeded quizzes need no LLM to display.
+  app.post("/api/admin/attach-quiz", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { action, teamRole, items, apply } = req.body ?? {};
+      const db = await import("../db");
+      if (!teamRole) return res.status(400).json({ error: "teamRole required" });
+      const track = await db.getTrackByRole(teamRole);
+      if (!track) return res.status(404).json({ error: `No track for teamRole "${teamRole}"` });
+      const milestones = await db.getMilestonesByTrack(track.id);
+
+      // Build the track's module list (id, title, milestone).
+      const trackModules: any[] = [];
+      for (const ms of milestones) {
+        const mods = await db.getModulesByMilestone(ms.id);
+        for (const m of mods) trackModules.push({ id: m.id, title: m.title, milestone: ms.title, quizEnabled: m.quizEnabled });
+      }
+
+      if (action === "list") {
+        return res.json({ ok: true, track: track.name, count: trackModules.length, modules: trackModules });
+      }
+
+      if (!Array.isArray(items)) return res.status(400).json({ error: "items[] required" });
+      const dbc = await db.getDb();
+      const { modules: modulesTable } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const results: any[] = [];
+      for (const item of items) {
+        let matched: any[];
+        if (typeof item.moduleId === "number") {
+          matched = trackModules.filter(m => m.id === item.moduleId);
+        } else if (typeof item.moduleMatch === "string") {
+          const q = item.moduleMatch.toLowerCase();
+          matched = trackModules.filter(m => (m.title ?? "").toLowerCase().includes(q));
+        } else {
+          matched = [];
+        }
+        if (matched.length !== 1) {
+          results.push({ quiz: item.name ?? item.moduleMatch, status: matched.length === 0 ? "no module match" : "ambiguous — matched " + matched.length, candidates: matched.map(m => ({ id: m.id, title: m.title })) });
+          continue;
+        }
+        const target = matched[0];
+        const qCount = Array.isArray(item.questions) ? item.questions.length : 0;
+        if (apply && dbc) {
+          await dbc.update(modulesTable).set({ quizEnabled: true }).where(eq(modulesTable.id, target.id));
+          await db.upsertQuiz(target.id, item.questions, item.passingScore ?? 70);
+        }
+        results.push({ quiz: item.name ?? target.title, moduleId: target.id, moduleTitle: target.title, milestone: target.milestone, questions: qCount, status: apply ? "attached" : "would attach" });
+      }
+      res.json({ ok: true, applied: !!apply, results });
+    } catch (e: any) {
+      console.error("[AttachQuiz] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: re-pull SOP content from Google Docs as rich HTML
   // (tables/colors/structure) instead of stripped plain text. Gated by the
   // SETUP_SECRET header. Dry run when apply=false. Quiet — updates content
