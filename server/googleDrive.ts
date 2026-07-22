@@ -154,3 +154,75 @@ export function sanitizeGoogleDocHtml(html: string): string {
 
   return (scopedCss ? `<style>${scopedCss}</style>\n` : "") + body;
 }
+
+// ─── Drive uploads (practice videos) ──────────────────────────────────────────
+const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3/files";
+const UPLOAD_FOLDER_NAME = "Reformation Training – Practice Videos";
+let cachedUploadFolderId: string | null = null;
+
+/** Find (or create) the app-owned folder that holds uploaded practice videos. */
+async function getOrCreateUploadFolder(token: string): Promise<string> {
+  if (cachedUploadFolderId) return cachedUploadFolderId;
+  const q = `name = '${UPLOAD_FOLDER_NAME}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const listRes = await fetch(
+    `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const listData = (await listRes.json()) as any;
+  if (listData.files?.[0]?.id) {
+    cachedUploadFolderId = listData.files[0].id;
+    return cachedUploadFolderId!;
+  }
+  const createRes = await fetch(`${DRIVE_API_BASE}/files?fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: UPLOAD_FOLDER_NAME, mimeType: FOLDER_MIME }),
+  });
+  const created = (await createRes.json()) as any;
+  if (!created.id) throw new Error("Could not create the Drive upload folder");
+  cachedUploadFolderId = created.id;
+  return cachedUploadFolderId!;
+}
+
+/**
+ * Upload a file to the app's Drive folder and return its file id. Requires an
+ * OAuth token (GOOGLE_DRIVE_REFRESH_TOKEN) — a plain API key can't write.
+ */
+export async function uploadToDrive(name: string, mimeType: string, buffer: Buffer): Promise<string> {
+  const token = await getDriveAccessToken();
+  if (!token) throw new Error("Google Drive write not configured (set GOOGLE_DRIVE_REFRESH_TOKEN).");
+  const folderId = await getOrCreateUploadFolder(token);
+  const metadata = { name, parents: [folderId] };
+  const boundary = "reformation-" + Date.now().toString(36);
+  const pre =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`;
+  const post = `\r\n--${boundary}--`;
+  const body = Buffer.concat([Buffer.from(pre, "utf8"), buffer, Buffer.from(post, "utf8")]);
+  const res = await fetch(`${DRIVE_UPLOAD_BASE}?uploadType=multipart&fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(`Drive upload failed (HTTP ${res.status}): ${(await res.text()).slice(0, 300)}`);
+  }
+  const data = (await res.json()) as any;
+  if (!data.id) throw new Error("Drive upload returned no file id");
+  return data.id;
+}
+
+/** Whether Drive write access is configured. */
+export async function driveWriteEnabled(): Promise<boolean> {
+  return !!(await getDriveAccessToken());
+}
+
+/** Best-effort delete of an app-created Drive file (used by cleanup). */
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const token = await getDriveAccessToken();
+  if (!token) return;
+  await fetch(`${DRIVE_API_BASE}/files/${fileId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}

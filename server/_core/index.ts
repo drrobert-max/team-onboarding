@@ -723,6 +723,14 @@ async function startServer() {
       if (!req.file) return res.status(400).json({ error: "No file provided" });
       const ext = (req.file.originalname.split(".").pop() ?? "mp4").toLowerCase();
       const contentType = req.file.mimetype || (ext === "mov" ? "video/quicktime" : "video/mp4");
+      // Prefer Google Drive when write access is configured; otherwise fall back
+      // to S3-compatible storage (legacy path).
+      const { driveWriteEnabled, uploadToDrive } = await import("../googleDrive");
+      if (await driveWriteEnabled()) {
+        const name = req.file.originalname || `practice-video-${Date.now()}.${ext}`;
+        const fileId = await uploadToDrive(name, contentType, req.file.buffer);
+        return res.json({ key: `gdrive:${fileId}`, storageUrl: `/api/audio/drive/${fileId}` });
+      }
       const key = `submissions/videos/${Date.now()}.${ext}`;
       const { key: finalKey, url: storageUrl } = await storagePut(key, req.file.buffer, contentType);
       res.json({ key: finalKey, storageUrl });
