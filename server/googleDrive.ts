@@ -168,6 +168,9 @@ async function getOrCreateUploadFolder(token: string): Promise<string> {
     `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
+  if (!listRes.ok) {
+    throw new Error(`Drive list failed (HTTP ${listRes.status}): ${(await listRes.text()).slice(0, 400)}`);
+  }
   const listData = (await listRes.json()) as any;
   if (listData.files?.[0]?.id) {
     cachedUploadFolderId = listData.files[0].id;
@@ -178,8 +181,11 @@ async function getOrCreateUploadFolder(token: string): Promise<string> {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ name: UPLOAD_FOLDER_NAME, mimeType: FOLDER_MIME }),
   });
+  if (!createRes.ok) {
+    throw new Error(`Drive folder create failed (HTTP ${createRes.status}): ${(await createRes.text()).slice(0, 400)}`);
+  }
   const created = (await createRes.json()) as any;
-  if (!created.id) throw new Error("Could not create the Drive upload folder");
+  if (!created.id) throw new Error("Drive folder create returned no id");
   cachedUploadFolderId = created.id;
   return cachedUploadFolderId!;
 }
