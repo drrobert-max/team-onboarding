@@ -237,6 +237,7 @@ export default function ModuleView() {
     { id: moduleId },
     { enabled: moduleId > 0 }
   );
+  const utils = trpc.useUtils();
   const generateQuiz = trpc.quiz.generate.useMutation({
     onSuccess: () => moduleQuery.refetch(),
     onError: () => toast.error("Failed to generate quiz. Please try again."),
@@ -245,17 +246,34 @@ export default function ModuleView() {
     onSuccess: (result) => {
       setQuizResult(result);
       moduleQuery.refetch();
+      // Passing a quiz completes the module — refresh XP/badges and celebrate.
+      utils.gamification.mine.invalidate();
+      if (result.passed) {
+        utils.tracks.myTrack.invalidate();
+        toast.success(`Quiz passed — ${result.score}%! 🎉`, {
+          description: "Nice work — that's +50 XP toward your next level.",
+          duration: 3500,
+        });
+        confetti({
+          particleCount: 120,
+          spread: 85,
+          origin: { y: 0.55 },
+          colors: ["#4ade80", "#22c55e", "#16a34a", "#bbf7d0", "#facc15", "#ffffff"],
+          scalar: 1.0,
+          gravity: 1.1,
+        });
+      }
     },
     onError: () => toast.error("Failed to submit quiz. Please try again."),
   });
   const markStarted = trpc.progress.update.useMutation();
-  const utils = trpc.useUtils();
   const markComplete = trpc.progress.update.useMutation({
     onSuccess: () => {
       moduleQuery.refetch();
       utils.tracks.myTrack.invalidate();
+      utils.gamification.mine.invalidate();
       toast.success("Module complete! 🎉", {
-        description: "Great work — keep it up!",
+        description: "Great work — that's +50 XP toward your next level.",
         duration: 3000,
       });
       confetti({
