@@ -201,6 +201,104 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // Public audio proxy: stream a Google Drive audio file so it plays in a normal
+  // <audio> player (no Google interstitial, correct headers, range/seek support).
+  // The file must be shared "anyone with the link"; auth mirrors the Drive syncs.
+  app.get("/api/audio/drive/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!/^[A-Za-z0-9_-]+$/.test(id)) return res.status(400).json({ error: "bad id" });
+      const { getDriveAccessToken } = await import("../googleDrive");
+      const token = await getDriveAccessToken();
+      const apiKey = process.env.GOOGLE_API_KEY;
+      if (!token && !apiKey) return res.status(500).json({ error: "Drive access not configured" });
+      const url =
+        `https://www.googleapis.com/drive/v3/files/${id}?alt=media` +
+        (!token && apiKey ? `&key=${apiKey}` : "");
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (req.headers.range) headers["Range"] = String(req.headers.range);
+      const upstream = await fetch(url, { headers });
+      res.status(upstream.status);
+      for (const h of ["content-type", "content-length", "accept-ranges", "content-range"]) {
+        const v = upstream.headers.get(h);
+        if (v) res.setHeader(h, v);
+      }
+      if (!res.getHeader("content-type")) res.setHeader("content-type", "audio/mpeg");
+      res.setHeader("cache-control", "public, max-age=3600");
+      if (!upstream.body) return res.end();
+      const { Readable } = await import("stream");
+      Readable.fromWeb(upstream.body as any).pipe(res);
+    } catch (e) {
+      console.error("[AudioProxy] error:", e);
+      if (!res.headersSent) res.status(500).json({ error: String(e) });
+    }
+  });
+  // One-off maintenance: list a Drive audio folder and attach files to modules'
+  // audio players. Gated by the SETUP_SECRET header. action:"list" enumerates the
+  // folder; otherwise each item sets a module's audioFiles to Drive-streamed URLs.
+  app.post("/api/admin/audio-drive", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { action, folderId, teamRole, items, apply } = req.body ?? {};
+      const db = await import("../db");
+      const { listDriveChildren, FOLDER_MIME } = await import("../googleDrive");
+
+      if (action === "list") {
+        if (!folderId) return res.status(400).json({ error: "folderId required" });
+        const files = (await listDriveChildren(folderId)).filter(f => f.mimeType !== FOLDER_MIME);
+        return res.json({ ok: true, count: files.length, files });
+      }
+
+      if (!Array.isArray(items)) return res.status(400).json({ error: "items[] required" });
+
+      // Resolve a module set if teamRole is given (enables moduleMatch by title).
+      let trackModules: any[] | null = null;
+      if (typeof teamRole === "string" && teamRole.trim()) {
+        const track = await db.getTrackByRole(teamRole);
+        if (!track) return res.status(404).json({ error: `No track for teamRole "${teamRole}"` });
+        const mss = await db.getMilestonesByTrack(track.id);
+        trackModules = [];
+        for (const ms of mss) {
+          const mods = await db.getModulesByMilestone(ms.id);
+          for (const m of mods) trackModules.push({ id: m.id, title: m.title });
+        }
+      }
+
+      const dbc = await db.getDb();
+      const { modules: modulesTable } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const results: any[] = [];
+      for (const item of items) {
+        let moduleId: number | null = typeof item.moduleId === "number" ? item.moduleId : null;
+        if (!moduleId && typeof item.moduleMatch === "string" && trackModules) {
+          const q = item.moduleMatch.toLowerCase();
+          const matches = trackModules.filter(m => (m.title ?? "").toLowerCase().includes(q));
+          if (matches.length !== 1) {
+            results.push({ moduleMatch: item.moduleMatch, status: matches.length === 0 ? "no match" : "ambiguous", candidates: matches });
+            continue;
+          }
+          moduleId = matches[0].id;
+        }
+        if (!moduleId || !Array.isArray(item.audio)) {
+          results.push({ item, status: "need moduleId/moduleMatch and audio[]" });
+          continue;
+        }
+        const audioFiles = item.audio.map((a: any) => ({ label: a.label, url: `/api/audio/drive/${a.driveId}` }));
+        if (apply && dbc) {
+          await dbc.update(modulesTable).set({ audioFiles }).where(eq(modulesTable.id, moduleId));
+        }
+        results.push({ moduleId, count: audioFiles.length, audioFiles, status: apply ? "attached" : "would attach" });
+      }
+      res.json({ ok: true, applied: !!apply, results });
+    } catch (e: any) {
+      console.error("[AudioDrive] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: attach reviewed quizzes to modules (and enable them).
   // Gated by the SETUP_SECRET header. action:"list" dumps a track's modules so
   // targets can be chosen; otherwise each item seeds a quiz on the matched

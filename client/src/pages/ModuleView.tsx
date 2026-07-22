@@ -179,12 +179,15 @@ function SoftwareChecklistCard({
 // Enforces single-player: pauses all other <audio> elements on the page when this one starts.
 function AudioPlayer({ label, storagePath }: { label: string; storagePath: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  // Extract the storage key from the /manus-storage/{key} path
-  const storageKey = storagePath.replace(/^\/manus-storage\//, '');
+  // A direct URL (Drive-streamed via /api/audio/... or an http link) plays as-is.
+  // Legacy Manus storage paths still resolve through a presigned S3 URL.
+  const isDirect = storagePath.startsWith('/api/') || /^https?:\/\//.test(storagePath);
+  const storageKey = isDirect ? '' : storagePath.replace(/^\/manus-storage\//, '');
   const presignQuery = trpc.storage.presign.useQuery(
     { key: storageKey },
-    { enabled: !!storageKey, staleTime: 4 * 60 * 1000 } // refresh before 5-min expiry
+    { enabled: !isDirect && !!storageKey, staleTime: 4 * 60 * 1000 } // refresh before 5-min expiry
   );
+  const src = isDirect ? storagePath : presignQuery.data?.url;
 
   const handlePlay = () => {
     // Pause every other audio element currently playing on the page
@@ -198,24 +201,24 @@ function AudioPlayer({ label, storagePath }: { label: string; storagePath: strin
   return (
     <div className="rounded-lg border border-border bg-secondary/30 p-4">
       <p className="text-sm font-medium text-foreground mb-2">{label}</p>
-      {presignQuery.isLoading && (
+      {!isDirect && presignQuery.isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading audio...
         </div>
       )}
-      {presignQuery.data?.url && (
+      {src && (
         <audio
           ref={audioRef}
           controls
           className="w-full"
-          src={presignQuery.data.url}
+          src={src}
           preload="metadata"
           onPlay={handlePlay}
         >
           Your browser does not support the audio element.
         </audio>
       )}
-      {presignQuery.isError && (
+      {!isDirect && presignQuery.isError && (
         <p className="text-sm text-destructive">Failed to load audio. Please refresh.</p>
       )}
     </div>
