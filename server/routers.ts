@@ -102,6 +102,11 @@ const storageRouter = router({
   presign: protectedProcedure
     .input(z.object({ key: z.string() }))
     .query(async ({ input }) => {
+      // Drive-hosted media (videos, audio) use a "gdrive:<fileId>" key and play
+      // through the app's streaming proxy — no S3 presign needed.
+      if (input.key.startsWith('gdrive:')) {
+        return { url: `/api/audio/drive/${input.key.slice('gdrive:'.length)}` };
+      }
       const { presignGetUrl } = await import('./_core/s3');
       const url = await presignGetUrl(input.key.replace(/^\/+/, ''));
       return { url };
