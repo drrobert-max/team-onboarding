@@ -253,6 +253,27 @@ async function startServer() {
         return res.json({ ok: true, count: files.length, files });
       }
 
+      // Report every module that has audio attached, flagging which are still on
+      // the old (broken) storage vs. already streaming from Drive.
+      if (action === "audit") {
+        const all = await db.getAllModules();
+        const withAudio = all.filter((m: any) => Array.isArray(m.audioFiles) && m.audioFiles.length);
+        const report = withAudio.map((m: any) => {
+          const files = (m.audioFiles as any[]).map(a => ({
+            label: a.label,
+            url: a.url,
+            broken: !(String(a.url).startsWith("/api/audio/") || /^https?:\/\//.test(String(a.url))),
+          }));
+          return { id: m.id, title: m.title, brokenCount: files.filter(f => f.broken).length, files };
+        });
+        return res.json({
+          ok: true,
+          modulesWithAudio: report.length,
+          brokenModules: report.filter(r => r.brokenCount > 0).length,
+          report,
+        });
+      }
+
       if (!Array.isArray(items)) return res.status(400).json({ error: "items[] required" });
 
       // Resolve a module set if teamRole is given (enables moduleMatch by title).
