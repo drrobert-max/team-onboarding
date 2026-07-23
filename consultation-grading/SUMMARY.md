@@ -2,6 +2,8 @@
 
 Running record of graded consultations. Newest first. Rubric: [scorecard.md](./scorecard.md).
 
+**🎯 Target: rolling average ≥ 80. Current: 41 (n = 8).** Latest owner briefing: [BRIEFING-2026-07-23.md](./BRIEFING-2026-07-23.md)
+
 | Date | Call | Type | Score | Band | Booked? | Deposit? | Plan price quoted? | Report |
 |------|------|------|------:|------|:-------:|:--------:|:------------------:|--------|
 | 2026-07-23 | Aries (newborn) | Referral, newborn digestion | **82** | Strong (75–89) | ✅ Wed 7/29 11:15 | ✅ $67 on call | ✅ no — **model call** | [grade](./grades/2026-07-23-aries.md) |
