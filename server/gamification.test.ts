@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeLevel, computeBadges, nextStreak, displayStreak, XP_PER_LEVEL } from "./gamification";
+import { computeLevel, computeBadges, nextStreak, displayStreak, dayKey, XP_PER_LEVEL } from "./gamification";
 
 describe("computeLevel", () => {
   it("starts at level 1 with zero xp", () => {
@@ -58,5 +58,16 @@ describe("streak math", () => {
   it("displays 0 once the streak has lapsed", () => {
     expect(displayStreak("2026-07-18", 5, "2026-07-21")).toBe(0);
     expect(displayStreak("2026-07-20", 5, "2026-07-21")).toBe(5);
+  });
+});
+
+describe("dayKey — Eastern day boundary", () => {
+  it("uses the Eastern calendar day, not UTC", () => {
+    // 02:00 UTC on the 24th is still 22:00 the previous evening in Eastern (EDT),
+    // so the streak day should be the 23rd — not the 24th a UTC boundary gives.
+    expect(dayKey(new Date("2026-07-24T02:00:00Z"))).toBe("2026-07-23");
+  });
+  it("agrees with UTC well inside the same day", () => {
+    expect(dayKey(new Date("2026-07-24T16:00:00Z"))).toBe("2026-07-24");
   });
 });

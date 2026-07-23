@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { etDate, etDateTime } from "@/lib/utils";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +22,7 @@ function ThreadBubble({ msg }: { msg: { message: string; userName: string | null
         </p>
         <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
         <p className={`text-[10px] mt-1 ${isAdmin ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-          {new Date(msg.createdAt).toLocaleString()}
+          {etDateTime(msg.createdAt)}
         </p>
       </div>
     </div>
@@ -121,7 +122,7 @@ function QuestionRow({ q, defaultOpen, onReply }: { q: any; defaultOpen?: boolea
             </div>
             <p className="text-sm text-foreground line-clamp-2">{q.question}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-muted-foreground">{new Date(q.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-muted-foreground">{etDate(q.createdAt)}</span>
               {q.moduleName && (
                 <a
                   href={q.resolvedModuleId ? `/modules/${q.resolvedModuleId}` : undefined}
@@ -145,7 +146,7 @@ function QuestionRow({ q, defaultOpen, onReply }: { q: any; defaultOpen?: boolea
               <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm bg-muted text-foreground">
                 <p className="text-[11px] font-semibold mb-1 text-muted-foreground">{q.userName ?? "Trainee"} (original question)</p>
                 <p className="whitespace-pre-wrap leading-relaxed">{q.question}</p>
-                <p className="text-[10px] mt-1 text-muted-foreground">{new Date(q.createdAt).toLocaleString()}</p>
+                <p className="text-[10px] mt-1 text-muted-foreground">{etDateTime(q.createdAt)}</p>
               </div>
             </div>
 
@@ -265,7 +266,7 @@ function VideoRow({ v, defaultOpen, onReview }: { v: any; defaultOpen?: boolean;
             </div>
             <p className="text-sm text-foreground">{v.title}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-muted-foreground">{new Date(v.createdAt).toLocaleDateString()} · {v.fileName}</span>
+              <span className="text-xs text-muted-foreground">{etDate(v.createdAt)} · {v.fileName}</span>
               {v.moduleName && (
                 <a
                   href={v.resolvedModuleId ? `/modules/${v.resolvedModuleId}` : undefined}

@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
+import { etDate, etDateTime } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   CheckCircle2,
@@ -179,7 +180,7 @@ function TraineeDetailPanel({ userId, onClose }: { userId: number; onClose: () =
                   <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-foreground">{log.description}</p>
-                    <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
+                    <p className="text-muted-foreground">{etDateTime(log.createdAt)}</p>
                   </div>
                 </div>
               ))}
@@ -319,7 +320,7 @@ export default function AdminUsers() {
                       <p className="text-sm font-semibold text-foreground">{u.name}</p>
                       <p className="text-xs text-muted-foreground">{u.email}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Joined {new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        Joined {etDate(u.createdAt, { month: "short", day: "numeric", year: "numeric" })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

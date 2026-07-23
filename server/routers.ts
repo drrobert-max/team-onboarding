@@ -984,6 +984,9 @@ Return ONLY valid JSON matching this exact schema:
       if (!quiz) throw new TRPCError({ code: "NOT_FOUND" });
 
       const questions = quiz.questions as Array<{ id: number; correctIndex: number }>;
+      if (!Array.isArray(questions) || questions.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This quiz has no questions." });
+      }
       let correct = 0;
       for (let i = 0; i < questions.length; i++) {
         if (input.answers[i] === questions[i].correctIndex) correct++;
@@ -1525,7 +1528,6 @@ const submissionsRouter = router({
       message: z.string().min(1).max(5000),
     }))
     .mutation(async ({ ctx, input }) => {
-      console.log('[DEBUG addQuestionReply] userId:', ctx.user.id, 'email:', ctx.user.email, 'questionId:', input.questionId);
       let reply;
       try {
         reply = await db.addQuestionReply({
@@ -1534,11 +1536,10 @@ const submissionsRouter = router({
           message: input.message,
         });
       } catch (dbErr) {
-        console.error('[DEBUG addQuestionReply] DB error:', dbErr);
+        console.error('[addQuestionReply] DB error:', dbErr);
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: String(dbErr) });
       }
       if (!reply) {
-        console.error('[DEBUG addQuestionReply] reply is null after insert');
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
       }
       // Notify the other party — all side effects are non-fatal

@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import { BookOpen, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -114,7 +115,7 @@ export default function SopLibrary() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{sop.title}</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              v{sop.version} · Updated {new Date(sop.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              v{sop.version} · Updated {etDate(sop.lastUpdated, { month: "short", day: "numeric", year: "numeric" })}
                             </p>
                             {needsReview && (
                               <Badge className="mt-2 text-[10px] bg-secondary text-foreground border-border">Needs Re-Review</Badge>

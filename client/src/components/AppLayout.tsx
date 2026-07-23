@@ -14,7 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { trpc } from "@/lib/trpc";
-import { initials } from "@/lib/utils";
+import { initials, etDateTime } from "@/lib/utils";
 import {
   Activity,
   Bell,
@@ -546,7 +546,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <p className="text-sm font-semibold text-foreground leading-tight">{n.title}</p>
                     <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{n.message}</p>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      {new Date(n.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {etDateTime(n.createdAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                   {!n.isRead && (

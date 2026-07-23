@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
+import { etDateTime } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   Activity,
@@ -65,8 +66,7 @@ export default function ActivityLogPage() {
   );
 
   function formatTime(ts: Date | string) {
-    const d = new Date(ts);
-    return d.toLocaleString("en-US", {
+    return etDateTime(ts, {
       month: "short",
       day: "numeric",
       year: "numeric",

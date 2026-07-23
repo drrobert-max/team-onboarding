@@ -2,7 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import GamificationCard from "@/components/GamificationCard";
 import { trpc } from "@/lib/trpc";
-import { firstName } from "@/lib/utils";
+import { firstName, etHour } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   Activity,
@@ -250,7 +250,7 @@ export default function Dashboard() {
   const userFirstName = firstName(user.name);
   const userRoleLabel = user.teamRole ? ROLE_LABELS[user.teamRole] : (isAdmin ? "Admin" : "Team Member");
 
-  const hour = new Date().getHours();
+  const hour = etHour();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   // Quick-action cards for navigation

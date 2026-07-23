@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   BookOpen,
@@ -195,7 +196,7 @@ export default function NewHirePrepChecklist() {
       </head>
       <body>
         <h1>SOP Binder — ${newHire?.name ?? "New Hire"}</h1>
-        <p class="meta">Role: ${ROLE_LABELS[newHire?.teamRole ?? ""] ?? "—"} &nbsp;|&nbsp; Prepared: ${new Date().toLocaleDateString()}</p>
+        <p class="meta">Role: ${ROLE_LABELS[newHire?.teamRole ?? ""] ?? "—"} &nbsp;|&nbsp; Prepared: ${etDate(new Date())}</p>
         ${Object.entries(grouped).map(([cat, sops]) => `
           <h2>${cat}</h2>
           <ul>${sops.map((s) => `<li>${s.title}</li>`).join("")}</ul>
@@ -304,7 +305,7 @@ export default function NewHirePrepChecklist() {
                       </div>
                       {item.completed && item.completedAt && (
                         <p className="text-xs text-primary mt-0.5 ml-6">
-                          Completed {new Date(item.completedAt).toLocaleDateString()}
+                          Completed {etDate(item.completedAt)}
                         </p>
                       )}
                     </div>
