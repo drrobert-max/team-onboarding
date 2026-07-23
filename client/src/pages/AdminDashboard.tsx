@@ -2,6 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
+import { firstName } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   AlertCircle,
@@ -237,7 +238,7 @@ export default function AdminDashboard() {
                     onClick={() => setLocation(`/admin/prep/${s.user.id}`)}
                   >
                     <ClipboardList className="h-3.5 w-3.5" />
-                    {s.user.name?.split(" ")[0] ?? "Team Member"}
+                    {firstName(s.user.name, "Team Member")}
                   </Button>
                 ))}
                 {summaries.length > 6 && (

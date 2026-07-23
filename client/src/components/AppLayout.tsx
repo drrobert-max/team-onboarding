@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { trpc } from "@/lib/trpc";
+import { initials } from "@/lib/utils";
 import {
   Activity,
   Bell,
@@ -126,7 +127,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isAdminSectionActive = isAdmin && adminNavItems.some(item => isActive(item.path));
 
-  const userInitials = user.name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+  const userInitials = initials(user.name);
   const userRoleLabel = user.teamRole ? ROLE_LABELS[user.teamRole] : (isAdmin ? "Admin" : "Team Member");
 
   return (
