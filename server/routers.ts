@@ -403,6 +403,21 @@ const usersRouter = router({
     .mutation(async ({ input }) => {
       const user = await db.getUserById(input.userId);
       if (!user) throw new TRPCError({ code: "NOT_FOUND" });
+      // Persist name/email edits. Normalize email and reject a collision with
+      // another account before writing (the email column is unique).
+      const profile: { name?: string; email?: string } = {};
+      if (input.name !== undefined) profile.name = input.name.trim();
+      if (input.email !== undefined) {
+        const email = input.email.toLowerCase().trim();
+        if (email !== user.email) {
+          const existing = await db.getUserByEmail(email);
+          if (existing && existing.id !== input.userId) {
+            throw new TRPCError({ code: "CONFLICT", message: "Another user already has this email" });
+          }
+        }
+        profile.email = email;
+      }
+      if (Object.keys(profile).length) await db.updateUserProfile(input.userId, profile);
       if (input.teamRole) await db.updateUserTeamRole(input.userId, input.teamRole);
       if (input.testOutDate !== undefined) {
         await db.updateUserTestOutDate(input.userId, input.testOutDate ? new Date(input.testOutDate) : null);

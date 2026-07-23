@@ -150,6 +150,17 @@ export async function updateUserTestOutDate(userId: number, testOutDate: Date | 
   await db.update(users).set({ testOutDate }).where(eq(users.id, userId));
 }
 
+/** Update a user's profile fields (name/email). Only the provided fields change. */
+export async function updateUserProfile(userId: number, data: { name?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  const set: Partial<{ name: string; email: string }> = {};
+  if (data.name !== undefined) set.name = data.name;
+  if (data.email !== undefined) set.email = data.email;
+  if (Object.keys(set).length === 0) return;
+  await db.update(users).set(set).where(eq(users.id, userId));
+}
+
 // ─── SOP Categories ───────────────────────────────────────────────────────────
 
 export async function getSopCategories(): Promise<SopCategory[]> {
