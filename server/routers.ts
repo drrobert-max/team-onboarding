@@ -450,7 +450,9 @@ const usersRouter = router({
       const user = await db.getUserById(input.userId);
       if (!user) throw new TRPCError({ code: "NOT_FOUND" });
       if (!user.email) throw new TRPCError({ code: "BAD_REQUEST", message: "User has no email address" });
-      sendWelcomeEmail(user.name ?? "Team Member", user.email, "(your existing password)", `${input.origin}/login`).catch(() => {});
+      // Args are (toEmail, toName, ...) — keep them in that order (they were
+      // previously swapped, so the resend tried to send to the user's name).
+      sendWelcomeEmail(user.email, user.name ?? "Team Member", "(your existing password)", `${input.origin}/login`).catch(() => {});
       return { success: true };
     }),
 });
