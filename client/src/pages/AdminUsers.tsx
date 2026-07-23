@@ -34,6 +34,7 @@ import {
   UserPlus,
   Trash2,
   Mail,
+  Pencil,
   ChevronRight,
   TrendingUp,
   Clock,
@@ -197,6 +198,11 @@ export default function AdminUsers() {
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [detailUserId, setDetailUserId] = useState<number | null>(null);
 
+  // Edit User (name/email) state
+  const [editModal, setEditModal] = useState<{ userId: number } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+
   // Create User state
   const [createModal, setCreateModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -253,6 +259,15 @@ export default function AdminUsers() {
   const updateUser = trpc.users.updateUser.useMutation({
     onSuccess: () => { toast.success("Test-out date updated"); usersQuery.refetch(); progressQuery.refetch(); },
     onError: () => toast.error("Failed to update"),
+  });
+  const editUser = trpc.users.updateUser.useMutation({
+    onSuccess: () => {
+      toast.success("User updated");
+      usersQuery.refetch();
+      progressQuery.refetch();
+      setEditModal(null);
+    },
+    onError: (err) => toast.error(err.message || "Failed to update user"),
   });
   const createUser = trpc.users.createUser.useMutation({
     onSuccess: () => {
@@ -446,6 +461,15 @@ export default function AdminUsers() {
                             size="sm"
                             variant="ghost"
                             className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                            title="Edit name & email"
+                            onClick={() => { setEditModal({ userId: u.id }); setEditName(u.name ?? ""); setEditEmail(u.email ?? ""); }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
                             title="Resend invite email"
                             onClick={() => resendInvite.mutate({ userId: u.id, origin: window.location.origin })}
                             disabled={resendInvite.isPending}
@@ -557,6 +581,50 @@ export default function AdminUsers() {
       </Dialog>
 
       {/* Create User Modal */}
+      {/* Edit User (name / email) */}
+      <Dialog open={!!editModal} onOpenChange={(open) => { if (!open) setEditModal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Full Name</Label>
+              <Input
+                placeholder="Jane Smith"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                placeholder="jane@reformationchiropractic.com"
+                value={editEmail}
+                onChange={e => setEditEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">This is also the email they log in with.</p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <Button
+                className="flex-1"
+                disabled={!editName.trim() || !editEmail.trim() || editUser.isPending}
+                onClick={() => {
+                  if (!editModal || !editName.trim() || !editEmail.trim()) return;
+                  editUser.mutate({ userId: editModal.userId, name: editName.trim(), email: editEmail.trim() });
+                }}
+              >
+                {editUser.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
+              </Button>
+              <Button variant="outline" onClick={() => setEditModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createModal} onOpenChange={(open) => { if (!open) { setCreateModal(false); setNewName(""); setNewEmail(""); setNewPassword(""); setNewTeamRole(""); setNewUserRole("user"); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
