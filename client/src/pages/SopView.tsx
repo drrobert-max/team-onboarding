@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import { ArrowLeft, BookOpen, CheckCircle2, Clock, History, Loader2 } from "lucide-react";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Streamdown } from "streamdown";
@@ -122,7 +123,7 @@ export default function SopView() {
                 <span className="text-xs text-muted-foreground">Version {sop.version}</span>
                 <span className="text-xs text-muted-foreground">·</span>
                 <span className="text-xs text-muted-foreground">
-                  Last updated {new Date(sop.lastUpdated).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  Last updated {etDate(sop.lastUpdated, { month: "long", day: "numeric", year: "numeric" })}
                 </span>
               </div>
             </div>
@@ -173,7 +174,7 @@ export default function SopView() {
                       <div key={v.id} className="border-l-2 border-border pl-3">
                         <p className="text-xs font-semibold text-foreground">v{v.version}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(v.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {etDate(v.createdAt, { month: "short", day: "numeric", year: "numeric" })}
                         </p>
                         {v.changeNote && <p className="text-xs text-muted-foreground mt-0.5 italic">{v.changeNote}</p>}
                       </div>

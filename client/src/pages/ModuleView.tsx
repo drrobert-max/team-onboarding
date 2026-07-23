@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   AlertCircle,
@@ -153,7 +154,7 @@ function SoftwareChecklistCard({
               </span>
               {item.isChecked && item.checkedAt && (
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {new Date(item.checkedAt).toLocaleDateString("en-US", {
+                  {etDate(item.checkedAt, {
                     month: "short",
                     day: "numeric",
                   })}
@@ -602,7 +603,7 @@ export default function ModuleView() {
                   <span className="text-xs text-muted-foreground">v{mod.sop.version}</span>
                   <span className="text-xs text-muted-foreground">·</span>
                   <span className="text-xs text-muted-foreground">
-                    Updated {new Date(mod.sop.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    Updated {etDate(mod.sop.lastUpdated, { month: "short", day: "numeric", year: "numeric" })}
                   </span>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { etDate, etDateTime } from "@/lib/utils";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +23,7 @@ function ThreadBubble({ msg }: { msg: { message: string; userName: string | null
         </p>
         <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
         <p className={`text-[10px] mt-1 ${isAdmin ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-          {new Date(msg.createdAt).toLocaleString()}
+          {etDateTime(msg.createdAt)}
         </p>
       </div>
     </div>
@@ -63,7 +64,7 @@ function QuestionCard({ q, defaultOpen }: { q: any; defaultOpen?: boolean }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground line-clamp-2">{q.question}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {new Date(q.createdAt).toLocaleDateString()} · {q.moduleName ? `Module: ${q.moduleName}` : "General"}
+              {etDate(q.createdAt)} · {q.moduleName ? `Module: ${q.moduleName}` : "General"}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -81,7 +82,7 @@ function QuestionCard({ q, defaultOpen }: { q: any; defaultOpen?: boolean }) {
               <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm bg-muted text-foreground">
                 <p className="text-[11px] font-semibold mb-1 text-muted-foreground">You (original question)</p>
                 <p className="whitespace-pre-wrap leading-relaxed">{q.question}</p>
-                <p className="text-[10px] mt-1 text-muted-foreground">{new Date(q.createdAt).toLocaleString()}</p>
+                <p className="text-[10px] mt-1 text-muted-foreground">{etDateTime(q.createdAt)}</p>
               </div>
             </div>
 
@@ -160,7 +161,7 @@ function VideoCard({ v, defaultOpen }: { v: any; defaultOpen?: boolean }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">{v.title}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {new Date(v.createdAt).toLocaleDateString()} · {v.moduleName ? `Module: ${v.moduleName}` : "General"} · {v.fileName}
+              {etDate(v.createdAt)} · {v.moduleName ? `Module: ${v.moduleName}` : "General"} · {v.fileName}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">

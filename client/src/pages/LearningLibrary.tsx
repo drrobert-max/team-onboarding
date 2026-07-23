@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import AppLayout from "@/components/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -122,7 +123,7 @@ function VideoCard({ video, onPlay }: { video: Video; onPlay: () => void }) {
           <Badge variant="secondary" className="text-xs">{video.category}</Badge>
           {video.driveCreatedAt && (
             <span className="text-xs text-muted-foreground">
-              {new Date(video.driveCreatedAt).toLocaleDateString()}
+              {etDate(video.driveCreatedAt)}
             </span>
           )}
         </div>

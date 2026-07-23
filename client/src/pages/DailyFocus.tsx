@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
+import { etDate } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -43,7 +44,7 @@ function daysUntilNextThursday(): number {
 }
 
 function getTodayLabel(): string {
-  return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return etDate(new Date(), { weekday: "long", month: "long", day: "numeric" });
 }
 
 function scoreModule(

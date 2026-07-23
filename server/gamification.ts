@@ -92,9 +92,27 @@ export function computeBadges(m: BadgeInputs): BadgeState[] {
   ];
 }
 
-/** YYYY-MM-DD for a date in UTC (stable day boundaries for streak math). */
+// The practice runs on Eastern time, so streak day boundaries are computed in
+// America/New_York (which handles the EST/EDT daylight-saving switch) rather
+// than UTC — otherwise a streak would tick over at ~7pm local instead of local
+// midnight.
+const EASTERN_TZ = "America/New_York";
+
+/** YYYY-MM-DD for a date in Eastern time (the practice's local day boundary). */
 export function dayKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // en-CA formats as YYYY-MM-DD; the timeZone pins the calendar day to Eastern.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: EASTERN_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** The calendar day before a YYYY-MM-DD key. Pure string math (timezone-safe). */
+function previousDayKey(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) - 86400000).toISOString().slice(0, 10);
 }
 
 /**
@@ -104,8 +122,7 @@ export function dayKey(d: Date): string {
  */
 export function nextStreak(lastActiveKey: string | null, storedStreak: number, todayKey: string): number {
   if (lastActiveKey === todayKey) return Math.max(1, storedStreak);
-  const yesterday = dayKey(new Date(new Date(todayKey + "T00:00:00Z").getTime() - 86400000));
-  if (lastActiveKey === yesterday) return storedStreak + 1;
+  if (lastActiveKey === previousDayKey(todayKey)) return storedStreak + 1;
   return 1;
 }
 
@@ -116,7 +133,6 @@ export function nextStreak(lastActiveKey: string | null, storedStreak: number, t
 export function displayStreak(lastActiveKey: string | null, storedStreak: number, todayKey: string): number {
   if (!lastActiveKey) return 0;
   if (lastActiveKey === todayKey) return storedStreak;
-  const yesterday = dayKey(new Date(new Date(todayKey + "T00:00:00Z").getTime() - 86400000));
-  if (lastActiveKey === yesterday) return storedStreak;
+  if (lastActiveKey === previousDayKey(todayKey)) return storedStreak;
   return 0;
 }
