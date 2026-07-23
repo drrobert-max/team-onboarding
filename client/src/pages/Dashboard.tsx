@@ -203,7 +203,15 @@ export default function Dashboard() {
   // forward by 7-day increments until it's upcoming (preserves the day-of-week).
   const testOutDate = useMemo(() => {
     if (!user || !(user as any).testOutDate) return null;
-    const stored = new Date((user as any).testOutDate);
+    // The test-out date is a *calendar day*, but it's stored as a UTC-midnight
+    // timestamp. Rebuild it from its Y/M/D parts as a LOCAL date so it shows the
+    // same day the admin picked in every timezone (a plain `new Date(stored)`
+    // would render UTC midnight as the previous evening — and previous day — for
+    // US viewers).
+    const raw = (user as any).testOutDate;
+    const iso = typeof raw === "string" ? raw : new Date(raw).toISOString();
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    const stored = new Date(y, m - 1, d);
     const now = new Date();
     // Set "now" to start of today so same-day still counts as upcoming
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -217,8 +225,10 @@ export default function Dashboard() {
   const testOutInfo = useMemo(() => {
     if (!testOutDate || !currentMilestone) return null;
     const now = new Date();
-    const msUntil = testOutDate.getTime() - now.getTime();
-    const daysUntil = Math.ceil(msUntil / (1000 * 60 * 60 * 24));
+    // Count whole days from the start of today to the (local-midnight) test-out
+    // day, so "today" reads 0 and "tomorrow" reads 1 regardless of the time of day.
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysUntil = Math.round((testOutDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     const totalRequired = currentMilestone.modules.length;
     const completedRequired = currentMilestone.modules.filter((m: any) => m.progress?.status === "completed").length;
     const remaining = totalRequired - completedRequired;
