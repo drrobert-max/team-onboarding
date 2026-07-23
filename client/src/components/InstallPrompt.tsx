@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Download, Share, Plus } from "lucide-react";
+import { X, Download, Share, Plus, Menu } from "lucide-react";
 
 // Extend Window type for the beforeinstallprompt event
 interface BeforeInstallPromptEvent extends Event {
@@ -9,6 +9,13 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DISMISSED_KEY = "pwa-install-dismissed";
 const DISMISSED_EXPIRY_DAYS = 14; // re-show after 14 days
+
+// How the install happens on this device:
+//  - "native": the browser fires beforeinstallprompt, so one tap installs
+//    (Android Chrome, desktop Chrome/Edge).
+//  - "ios": iPhone/iPad Safari — no install API, show Share → Add to Home Screen.
+//  - "desktop-safari": Safari on Mac — no install API, show File → Add to Dock.
+type Platform = "native" | "ios" | "desktop-safari";
 
 function isAlreadyInstalled(): boolean {
   return (
@@ -41,47 +48,64 @@ function isIOS(): boolean {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as Window & { MSStream?: unknown }).MSStream;
 }
 
+// Per-platform copy + step-by-step instructions rendered in the bottom sheet.
+const SUBTITLE: Record<Platform, string> = {
+  native: "Install it for quick, full-screen access",
+  ios: "Add it to your home screen for quick access",
+  "desktop-safari": "Add it to your Dock for quick access",
+};
+
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showIOSSheet, setShowIOSSheet] = useState(false);
+  const [platform, setPlatform] = useState<Platform>("native");
+  const [showSheet, setShowSheet] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     // Don't show if already installed or recently dismissed
     if (isAlreadyInstalled() || wasDismissedRecently()) return;
 
+    const ua = navigator.userAgent;
     const ios = isIOS();
-    // Only show iOS sheet in Safari (not Chrome/Firefox on iOS)
-    const isSafari = ios && /safari/i.test(navigator.userAgent) && !/crios|fxios|opios/i.test(navigator.userAgent);
+    // Safari on iOS (not Chrome/Firefox on iOS, which can't "Add to Home Screen")
+    const iosSafari = ios && /safari/i.test(ua) && !/crios|fxios|opios/i.test(ua);
+    // Safari on macOS: has "Safari" + "Macintosh" but none of the Chromium/other
+    // engine markers. These browsers never fire beforeinstallprompt.
+    const desktopSafari =
+      !ios &&
+      /safari/i.test(ua) &&
+      /macintosh/i.test(ua) &&
+      !/chrome|chromium|crios|edg|opr|firefox|fxios/i.test(ua);
 
-    if (isSafari) {
-      // iOS Safari: show manual instructions after a short delay
+    if (iosSafari || desktopSafari) {
+      setPlatform(iosSafari ? "ios" : "desktop-safari");
+      // Show manual instructions after a short delay so it doesn't fight the splash.
       const t = setTimeout(() => setVisible(true), 3000);
       return () => clearTimeout(t);
     }
 
-    if (!ios) {
-      // Android / Chrome / Edge: check for pre-captured event first
-      const preCapture = (window as Window & { __pwaInstallPrompt?: Event }).__pwaInstallPrompt;
-      if (preCapture) {
-        setDeferredPrompt(preCapture as BeforeInstallPromptEvent);
-        const t = setTimeout(() => setVisible(true), 3000);
-        return () => clearTimeout(t);
-      }
-      // Fallback: listen for the event if not yet fired
-      const handler = (e: Event) => {
-        e.preventDefault();
-        setDeferredPrompt(e as BeforeInstallPromptEvent);
-        setVisible(true);
-      };
-      window.addEventListener("beforeinstallprompt", handler);
-      return () => window.removeEventListener("beforeinstallprompt", handler);
+    // Android / Chrome / Edge: one-tap native install via beforeinstallprompt.
+    setPlatform("native");
+    const preCapture = (window as Window & { __pwaInstallPrompt?: Event }).__pwaInstallPrompt;
+    if (preCapture) {
+      setDeferredPrompt(preCapture as BeforeInstallPromptEvent);
+      const t = setTimeout(() => setVisible(true), 3000);
+      return () => clearTimeout(t);
     }
+    // Fallback: listen for the event if it hasn't fired yet.
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   const handleInstall = async () => {
-    if (isIOS()) {
-      setShowIOSSheet(true);
+    // Browsers without an install API get step-by-step instructions instead.
+    if (platform === "ios" || platform === "desktop-safari") {
+      setShowSheet(true);
       return;
     }
     if (!deferredPrompt) return;
@@ -97,10 +121,25 @@ export default function InstallPrompt() {
   const dismiss = () => {
     markDismissed();
     setVisible(false);
-    setShowIOSSheet(false);
+    setShowSheet(false);
   };
 
   if (!visible) return null;
+
+  // Steps shown in the instructions sheet, chosen per platform.
+  const steps =
+    platform === "ios"
+      ? [
+          { icon: <Share size={20} color="#1a3a0d" />, text: <>Tap the <strong>Share</strong> button in Safari's toolbar</> },
+          { icon: <Plus size={20} color="#1a3a0d" />, text: <>Scroll down and tap <strong>"Add to Home Screen"</strong></> },
+          { icon: <Download size={20} color="#1a3a0d" />, text: <>Tap <strong>"Add"</strong> in the top-right corner</> },
+        ]
+      : [
+          { icon: <Menu size={20} color="#1a3a0d" />, text: <>Open the <strong>File</strong> menu in Safari's menu bar</> },
+          { icon: <Plus size={20} color="#1a3a0d" />, text: <>Click <strong>"Add to Dock…"</strong></> },
+          { icon: <Download size={20} color="#1a3a0d" />, text: <>Click <strong>"Add"</strong> to confirm</> },
+        ];
+  const sheetSubtitle = platform === "ios" ? "Add to your iPhone home screen" : "Add it to your Mac Dock";
 
   return (
     <>
@@ -111,6 +150,8 @@ export default function InstallPrompt() {
           bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
           left: "12px",
           right: "12px",
+          maxWidth: "440px",
+          margin: "0 auto",
           zIndex: 9000,
           borderRadius: "16px",
           backgroundColor: "#1a3a0d",
@@ -149,7 +190,7 @@ export default function InstallPrompt() {
             Install Training Hub
           </p>
           <p style={{ margin: "2px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.65)", lineHeight: 1.4 }}>
-            Add to your home screen for quick access
+            {SUBTITLE[platform]}
           </p>
         </div>
 
@@ -173,7 +214,7 @@ export default function InstallPrompt() {
           }}
         >
           <Download size={14} />
-          Install
+          {platform === "native" ? "Install" : "How"}
         </button>
 
         {/* Dismiss */}
@@ -195,8 +236,8 @@ export default function InstallPrompt() {
         </button>
       </div>
 
-      {/* ── iOS Instructions Sheet ── */}
-      {showIOSSheet && (
+      {/* ── Manual Instructions Sheet (iOS Safari / macOS Safari) ── */}
+      {showSheet && (
         <div
           style={{
             position: "fixed",
@@ -211,6 +252,8 @@ export default function InstallPrompt() {
           <div
             style={{
               width: "100%",
+              maxWidth: "480px",
+              margin: "0 auto",
               backgroundColor: "#fff",
               borderRadius: "20px 20px 0 0",
               padding: "24px 24px calc(24px + env(safe-area-inset-bottom, 0px))",
@@ -229,16 +272,12 @@ export default function InstallPrompt() {
               />
               <div>
                 <p style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1a3a0d" }}>Install Training Hub</p>
-                <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#6b7280" }}>Add to your iPhone home screen</p>
+                <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#6b7280" }}>{sheetSubtitle}</p>
               </div>
             </div>
 
             {/* Steps */}
-            {[
-              { icon: <Share size={20} color="#1a3a0d" />, text: <>Tap the <strong>Share</strong> button in Safari's toolbar</> },
-              { icon: <Plus size={20} color="#1a3a0d" />, text: <>Scroll down and tap <strong>"Add to Home Screen"</strong></> },
-              { icon: <Download size={20} color="#1a3a0d" />, text: <>Tap <strong>"Add"</strong> in the top right corner</> },
-            ].map((step, i) => (
+            {steps.map((step, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
                 <div style={{
                   width: "36px", height: "36px", borderRadius: "8px",
