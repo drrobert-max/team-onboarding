@@ -511,22 +511,33 @@ const tracksRouter = router({
     return db.getTracks();
   }),
 
-  myTrack: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.approvalStatus !== "approved") throw new TRPCError({ code: "FORBIDDEN" });
-    if (!ctx.user.teamRole) return null;
-    const track = await db.getTrackByRole(ctx.user.teamRole);
-    if (!track) return null;
-    const mss = await db.getMilestonesByTrack(track.id);
-    const milestonesWithModules = await Promise.all(mss.map(async (ms) => {
-      const mods = await db.getModulesByMilestone(ms.id);
-      const progress = await Promise.all(mods.map(async (mod) => {
-        const p = await db.getModuleProgress(ctx.user.id, mod.id);
-        return { ...mod, progress: p ?? null };
+  myTrack: protectedProcedure
+    .input(z.object({ userId: z.number() }).optional())
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.approvalStatus !== "approved") throw new TRPCError({ code: "FORBIDDEN" });
+      // Admins may view another user's track (e.g. to grade their test-outs);
+      // everyone else always sees their own.
+      let targetUser = ctx.user;
+      if (input?.userId && input.userId !== ctx.user.id) {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+        const u = await db.getUserById(input.userId);
+        if (!u) throw new TRPCError({ code: "NOT_FOUND" });
+        targetUser = u;
+      }
+      if (!targetUser.teamRole) return null;
+      const track = await db.getTrackByRole(targetUser.teamRole);
+      if (!track) return null;
+      const mss = await db.getMilestonesByTrack(track.id);
+      const milestonesWithModules = await Promise.all(mss.map(async (ms) => {
+        const mods = await db.getModulesByMilestone(ms.id);
+        const progress = await Promise.all(mods.map(async (mod) => {
+          const p = await db.getModuleProgress(targetUser.id, mod.id);
+          return { ...mod, progress: p ?? null };
+        }));
+        return { ...ms, modules: progress };
       }));
-      return { ...ms, modules: progress };
-    }));
-    return { ...track, milestones: milestonesWithModules };
-  }),
+      return { ...track, milestones: milestonesWithModules };
+    }),
 
   milestones: protectedProcedure
     .input(z.object({ trackId: z.number() }))
