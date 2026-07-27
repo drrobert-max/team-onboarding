@@ -335,7 +335,13 @@ export async function sendVideoReviewedEmail(
   });
 }
 
-const APP_BASE_URL = process.env.APP_BASE_URL ?? "https://reformhub-vhmkvf2o.manus.space";
+// Base URL for links in emails. Defaults to the live Railway site; override
+// with APP_BASE_URL if the domain changes. (The old default pointed at the
+// retired Manus site, so reply links landed on a dead page.)
+const APP_BASE_URL =
+  process.env.APP_BASE_URL ??
+  process.env.PUBLIC_BASE_URL ??
+  "https://team-onboarding-production.up.railway.app";
 
 export async function sendQuestionReplyEmail(params: {
   toEmail: string;
