@@ -124,13 +124,16 @@ export default function TestOuts() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
-  const trackQuery = trpc.tracks.myTrack.useQuery(undefined, {
-    enabled: !!user && user.approvalStatus === "approved",
-  });
-
   const usersQuery = trpc.users.list.useQuery(undefined, { enabled: isAdmin });
 
   const viewingUserId = isAdmin ? (selectedUserId ?? user?.id ?? null) : (user?.id ?? null);
+
+  // Load the *viewed* trainee's track (an admin grading a trainee must see that
+  // trainee's track + progress, not the admin's own).
+  const trackQuery = trpc.tracks.myTrack.useQuery(
+    isAdmin && viewingUserId && viewingUserId !== user?.id ? { userId: viewingUserId } : undefined,
+    { enabled: !!user && user.approvalStatus === "approved" && viewingUserId !== null },
+  );
 
   const gradesQuery = trpc.grading.getForUser.useQuery(
     { userId: viewingUserId! },

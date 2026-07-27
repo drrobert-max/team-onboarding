@@ -21,6 +21,7 @@ import {
   Monitor,
   PlayCircle,
   RefreshCw,
+  RotateCcw,
   Trophy,
   Upload,
   Video,
@@ -852,42 +853,47 @@ export default function ModuleView() {
           )}
         </div>
 
-        {/* Mark Complete / Undo — shown for non-quiz, non-software modules */}
-        {!mod.quizEnabled && !isSoftwareModule && (
-          <div className="mt-6 flex justify-center">
-            {isCompleted ? (
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
-                disabled={markUndo.isPending}
-                onClick={() => markUndo.mutate({ moduleId, status: "in_progress" })}
-              >
-                {markUndo.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                Completed — Undo
-              </Button>
-            ) : (
-              <Button
-                size="lg"
-                className="gap-2 bg-primary hover:bg-primary/90 text-white"
-                disabled={markComplete.isPending || !allBulletsChecked || (!!mod.loomUrl && !videoWatched && !isCompleted)}
-                title={!allBulletsChecked ? "Check off all required items above first" : undefined}
-                onClick={() => markComplete.mutate({ moduleId, status: "completed" })}
-              >
-                {markComplete.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                Mark as Complete
-              </Button>
-            )}
+        {/* Completed modules always offer "Mark as Incomplete" so an accidental
+            completion can be reversed — on every module type, including quiz and
+            software-checklist modules (which auto-complete on the last box). The
+            "Mark as Complete" button stays only on regular modules; quiz and
+            software modules complete through their own flow. */}
+        {isCompleted ? (
+          <div className="mt-6 flex flex-col items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="lg"
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
+              disabled={markUndo.isPending}
+              onClick={() => markUndo.mutate({ moduleId, status: "in_progress" })}
+            >
+              {markUndo.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+              Mark as Incomplete
+            </Button>
+            <p className="text-xs text-muted-foreground">Checked this off by accident? This reopens the module.</p>
           </div>
-        )}
+        ) : (!mod.quizEnabled && !isSoftwareModule) ? (
+          <div className="mt-6 flex justify-center">
+            <Button
+              size="lg"
+              className="gap-2 bg-primary hover:bg-primary/90 text-white"
+              disabled={markComplete.isPending || !allBulletsChecked || (!!mod.loomUrl && !videoWatched && !isCompleted)}
+              title={!allBulletsChecked ? "Check off all required items above first" : undefined}
+              onClick={() => markComplete.mutate({ moduleId, status: "completed" })}
+            >
+              {markComplete.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Mark as Complete
+            </Button>
+          </div>
+        ) : null}
 
         {/* Bottom Navigation */}
         <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
