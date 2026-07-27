@@ -213,7 +213,9 @@ export default function ActivityLogPage() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                          {log.description}
+                          {(log as any).moduleTitle
+                            ? String(log.description).replace(/module ID \d+/i, `"${(log as any).moduleTitle}"`)
+                            : log.description}
                         </p>
                       </div>
 

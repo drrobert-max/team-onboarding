@@ -83,12 +83,17 @@ function GradeButtons({
   onGraded: () => void;
 }) {
   const utils = trpc.useUtils();
-  const setGrade = trpc.grading.setGrade.useMutation({
-    onSuccess: () => {
-      utils.grading.getForUser.invalidate({ userId });
-      onGraded();
-    },
-  });
+  const refresh = () => { utils.grading.getForUser.invalidate({ userId }); onGraded(); };
+  const setGrade = trpc.grading.setGrade.useMutation({ onSuccess: refresh });
+  const clearGrade = trpc.grading.clearGrade.useMutation({ onSuccess: refresh });
+  const busy = setGrade.isPending || clearGrade.isPending;
+
+  // Clicking the grade that's already set clears it (un-mark); clicking the
+  // other grade switches to it.
+  const pick = (grade: "mastered" | "needs_improvement") => {
+    if (currentGrade === grade) clearGrade.mutate({ userId, moduleId, milestoneId });
+    else setGrade.mutate({ userId, moduleId, milestoneId, grade });
+  };
 
   return (
     <div className="flex items-center gap-1.5 mt-2">
@@ -96,8 +101,9 @@ function GradeButtons({
         size="sm"
         variant={currentGrade === "mastered" ? "default" : "outline"}
         className={`h-6 text-[10px] px-2 py-0 gap-1 ${currentGrade === "mastered" ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30"}`}
-        onClick={() => setGrade.mutate({ userId, moduleId, milestoneId, grade: "mastered" })}
-        disabled={setGrade.isPending}
+        onClick={() => pick("mastered")}
+        disabled={busy}
+        title={currentGrade === "mastered" ? "Click again to un-mark" : "Mark as Mastered"}
       >
         <Star className="h-2.5 w-2.5" />
         Mastered
@@ -106,8 +112,9 @@ function GradeButtons({
         size="sm"
         variant={currentGrade === "needs_improvement" ? "default" : "outline"}
         className={`h-6 text-[10px] px-2 py-0 gap-1 ${currentGrade === "needs_improvement" ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500" : "border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/30"}`}
-        onClick={() => setGrade.mutate({ userId, moduleId, milestoneId, grade: "needs_improvement" })}
-        disabled={setGrade.isPending}
+        onClick={() => pick("needs_improvement")}
+        disabled={busy}
+        title={currentGrade === "needs_improvement" ? "Click again to un-mark" : "Mark as Needs Improvement"}
       >
         <AlertCircle className="h-2.5 w-2.5" />
         Needs Improvement
@@ -259,7 +266,9 @@ export default function TestOuts() {
   let completedModules = 0;
   for (const ms of visibleMilestones) {
     totalModules += ms.modules.length;
-    completedModules += ms.modules.filter(m => m.progress?.status === "completed").length;
+    // A test-out "counts" when an admin grades it Mastered — that's the grade
+    // map, not the trainee's training-progress status (which is separate).
+    completedModules += ms.modules.filter(m => gradeMap.get(`${m.id}-${ms.id}`) === "mastered").length;
   }
   const progressPct = totalModules > 0 ? Math.round((completedModules / totalModules) * 100) : 0;
 
@@ -365,7 +374,7 @@ export default function TestOuts() {
               const isPreview = !isAdmin && idx === visibleCount - 1 && idx > currentTestOutIdx;
               const isCurrent = idx === currentTestOutIdx;
               const msTotal = ms.modules.length;
-              const msDone = ms.modules.filter(m => m.progress?.status === "completed").length;
+              const msDone = ms.modules.filter(m => gradeMap.get(`${m.id}-${ms.id}`) === "mastered").length;
               const msPct = msTotal > 0 ? Math.round((msDone / msTotal) * 100) : 0;
               const expanded = isExpanded(ms.id);
 
