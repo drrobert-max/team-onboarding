@@ -2,7 +2,10 @@
 // JS/CSS bundles are always fetched fresh; only the app shell is cached for offline fallback.
 // When a new SW version is detected, all clients are reloaded automatically.
 
-const CACHE_NAME = 'reform-hub-v3';
+// The version is stamped per-build (scripts/stamp-sw.mjs replaces __BUILD_ID__)
+// so this file changes every deploy — that's what makes the browser detect an
+// update, activate the new SW, and auto-reload clients onto fresh code.
+const CACHE_NAME = 'reform-hub-__BUILD_ID__';
 const SHELL_ASSETS = [
   '/',
   '/manifest.json',
