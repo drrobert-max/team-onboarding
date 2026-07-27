@@ -1286,6 +1286,18 @@ const gradingRouter = router({
       return gradeResult;
     }),
 
+  // Admin: clear a test-out grade (undo an accidental Mastered / Needs Improvement).
+  clearGrade: adminProcedure
+    .input(z.object({ userId: z.number(), moduleId: z.number(), milestoneId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.clearTestOutGrade(input.userId, input.moduleId, input.milestoneId);
+      await db.logActivity({ userId: input.userId, eventType: "test_out_graded", description: `Test-out grade cleared on milestone ID ${input.milestoneId}`, moduleId: input.moduleId, milestoneId: input.milestoneId, metadata: { grade: "cleared", gradedBy: ctx.user.id } });
+      // A cleared grade means that test-out is no longer mastered, so a
+      // previously-complete onboarding must reopen.
+      await maybeReopenOnboarding(input.userId);
+      return { success: true };
+    }),
+
   // Get all grades for a specific user (admin or self)
   getForUser: protectedProcedure
     .input(z.object({ userId: z.number() }))
@@ -1377,7 +1389,14 @@ const activityLogRouter = router({
       offset: z.number().min(0).default(0),
     }))
     .query(async ({ input }) => {
-      return db.getActivityLogs({ userId: input.userId, limit: input.limit, offset: input.offset });
+      const logs = await db.getActivityLogs({ userId: input.userId, limit: input.limit, offset: input.offset });
+      // Attach the module's title so the UI can show a name instead of a raw ID.
+      const mods = await db.getAllModules();
+      const titleById = new Map(mods.map((m: any) => [m.id, m.title]));
+      return logs.map((l: any) => ({
+        ...l,
+        moduleTitle: l.moduleId ? (titleById.get(l.moduleId) ?? null) : null,
+      }));
     }),
 });
 // ─── Submissions Router ───────────────────────────────────────────────────────

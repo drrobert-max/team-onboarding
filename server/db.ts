@@ -558,6 +558,19 @@ export async function upsertPrepChecklist(data: {
 
 // ─── Test Out Grades ─────────────────────────────────────────────────────────
 
+/** Remove a test-out grade entirely (back to ungraded). */
+export async function clearTestOutGrade(userId: number, moduleId: number, milestoneId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(testOutGrades).where(
+    and(
+      eq(testOutGrades.userId, userId),
+      eq(testOutGrades.moduleId, moduleId),
+      eq(testOutGrades.milestoneId, milestoneId)
+    )
+  );
+}
+
 export async function setTestOutGrade({
   userId,
   moduleId,
