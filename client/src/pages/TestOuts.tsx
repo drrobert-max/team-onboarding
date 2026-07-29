@@ -276,7 +276,11 @@ export default function TestOuts() {
     (u: any) => u.approvalStatus === "approved" && u.teamRole
   );
 
-  if (!track && !trackQuery.isLoading) {
+  // Trainee with no track: dead-end message. Admins must NOT hit this — an
+  // admin often has no training track of their own (no team role by design),
+  // and they still need the page to render so the "Grading for" trainee
+  // selector is reachable.
+  if (!track && !trackQuery.isLoading && !isAdmin) {
     return (
       <AppLayout>
         <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
@@ -363,8 +367,18 @@ export default function TestOuts() {
           </div>
         ) : testOutMilestones.length === 0 ? (
           <div className="text-center py-20">
-            <CircleCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground text-sm">No test-out milestones found.</p>
+            {isAdmin && !track ? (
+              <>
+                <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-foreground text-sm font-medium mb-1">Select a trainee to grade</p>
+                <p className="text-muted-foreground text-sm">Pick someone in the "Grading for" dropdown above to see their test-outs.</p>
+              </>
+            ) : (
+              <>
+                <CircleCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground text-sm">No test-out milestones found.</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
