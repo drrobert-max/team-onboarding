@@ -208,6 +208,18 @@ export async function repointSop(sopId: number, data: { googleDocId: string; tit
   }).where(eq(sops.id, sopId));
 }
 
+/**
+ * Silently refresh a SOP's stored HTML when only volatile export bytes changed
+ * (Google shuffles class names / re-signs image URLs on every export). Keeps
+ * embedded image links fresh WITHOUT bumping the version, archiving, flagging
+ * reviews, or touching the user-facing lastUpdated date.
+ */
+export async function refreshSopContent(sopId: number, content: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(sops).set({ content, updatedAt: new Date() }).where(eq(sops.id, sopId));
+}
+
 // ─── SOPs ─────────────────────────────────────────────────────────────────────
 
 export async function getSopsByCategory(categoryId: number): Promise<Sop[]> {

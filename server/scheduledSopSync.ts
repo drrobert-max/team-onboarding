@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import * as db from "./db";
-import { listDriveChildren, fetchGoogleDocHtml, FOLDER_MIME, DOC_MIME } from "./googleDrive";
+import { listDriveChildren, fetchGoogleDocHtml, sopComparisonKey, FOLDER_MIME, DOC_MIME } from "./googleDrive";
 import { sendSopUpdatedEmail } from "./emailAuth";
 
 // The top-level Google Drive folder that holds the SOP library. Its subfolders
@@ -44,16 +44,26 @@ export async function syncSopsFromDrive(): Promise<SopSyncResult> {
         const existing = await db.getSopByGoogleDocId(doc.id);
         if (existing) {
           if (existing.content !== content) {
-            await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
-            // A plain-text → HTML change is the one-time formatting migration, not
-            // a real content edit — store it but don't flag/notify everyone.
-            const isFormatMigration =
-              !existing.content.trimStart().startsWith("<") && content.trimStart().startsWith("<");
-            if (!isFormatMigration) {
-              await db.flagSopForAllUsers(existing.id, "SOP updated — please re-review");
-              changed.push({ id: existing.id, title: doc.name });
+            // Google's HTML export is not byte-stable (shuffled class names,
+            // re-signed image URLs), so raw bytes differ on EVERY export. Only
+            // a normalized text/structure change is a real edit worth a version
+            // bump and notifications; volatile-only churn is stored silently so
+            // embedded image links stay fresh.
+            const isRealEdit = sopComparisonKey(existing.content) !== sopComparisonKey(content);
+            if (isRealEdit) {
+              await db.upsertSop({ googleDocId: doc.id, title: doc.name, content, categoryId, lastUpdated: new Date() });
+              // A plain-text → HTML change is the one-time formatting migration, not
+              // a real content edit — store it but don't flag/notify everyone.
+              const isFormatMigration =
+                !existing.content.trimStart().startsWith("<") && content.trimStart().startsWith("<");
+              if (!isFormatMigration) {
+                await db.flagSopForAllUsers(existing.id, "SOP updated — please re-review");
+                changed.push({ id: existing.id, title: doc.name });
+              }
+              updated++;
+            } else {
+              await db.refreshSopContent(existing.id, content);
             }
-            updated++;
           }
           // Keep category/title aligned with Drive — this also repairs any SOP
           // saved with the wrong category by an earlier run.
