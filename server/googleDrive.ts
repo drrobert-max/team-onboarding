@@ -141,6 +141,32 @@ function scopeCss(css: string): string {
     });
 }
 
+/**
+ * Reduce a stored/exported SOP HTML fragment to a stable comparison key.
+ *
+ * Google's HTML export is NOT byte-stable for an unchanged document: it
+ * shuffles its generated CSS class names (.c0/.c1/...) between exports and
+ * re-signs embedded image URLs. Comparing raw bytes therefore flags every SOP
+ * as "updated" on every sync. This strips all of that volatile styling noise —
+ * style blocks, class/style attributes, image URLs — leaving the document's
+ * text and structure, which only change when a human actually edits the doc.
+ * (Trade-off: a purely cosmetic edit, e.g. only re-coloring a word, won't
+ * trigger an update notice. Text/structure edits always will.)
+ */
+export function sopComparisonKey(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/\s(?:class|style|id)="[^"]*"/gi, "")
+    .replace(/(<img[^>]*\ssrc=")[^"]*(")/gi, "$1img$2")
+    // Google wraps every hyperlink in a google.com/url redirect whose ust=
+    // (timestamp) and usg= (signature) params change on every export. The real
+    // destination lives in the stable q= param, so drop only the volatile two —
+    // an actual link-target edit still changes the key.
+    .replace(/(?:&|&amp;)(?:ust|usg)=[^"&\s]*/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Turn a full Google Docs HTML export into a scoped, script-free fragment. */
 export function sanitizeGoogleDocHtml(html: string): string {
   const styleBlocks: string[] = [];
