@@ -680,6 +680,94 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: add a training module to a track's milestone, optionally
+  // importing a Google Doc as its primary SOP. Gated by the SETUP_SECRET header.
+  // Idempotent (skips if a module with the same title already exists in the
+  // milestone). Dry run when apply=false.
+  app.post("/api/admin/add-module", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const { teamRole, milestoneMatch, title, description, type, sopGoogleDocId, sopTitle, sopCategoryName, apply } = req.body ?? {};
+      if (!teamRole || !milestoneMatch || !title) {
+        return res.status(400).json({ error: "teamRole, milestoneMatch, and title are required" });
+      }
+      const db = await import("../db");
+      const track = await db.getTrackByRole(teamRole);
+      if (!track) return res.status(404).json({ error: `No track for teamRole "${teamRole}"` });
+
+      const milestones = await db.getMilestonesByTrack(track.id);
+      const mm = String(milestoneMatch).toLowerCase();
+      const matches = milestones.filter((ms: any) => (ms.title ?? "").toLowerCase().includes(mm));
+      if (matches.length !== 1) {
+        return res.json({
+          ok: false,
+          error: matches.length === 0 ? `No milestone matches "${milestoneMatch}"` : "Milestone match is ambiguous",
+          candidates: matches.map((ms: any) => ({ id: ms.id, title: ms.title })),
+        });
+      }
+      const milestone = matches[0];
+
+      const mods = await db.getModulesByMilestone(milestone.id);
+      const already = mods.find((m: any) => (m.title ?? "").toLowerCase() === String(title).toLowerCase());
+      if (already) {
+        return res.json({ ok: true, status: "already exists", moduleId: already.id, milestone: milestone.title });
+      }
+
+      // Import (or find) the SOP when a Google Doc is given.
+      let sopId: number | null = null;
+      let sopStatus = "none";
+      if (sopGoogleDocId) {
+        const existingSop = await db.getSopByGoogleDocId(sopGoogleDocId);
+        if (existingSop) {
+          sopId = existingSop.id;
+          sopStatus = `found existing SOP #${existingSop.id} "${existingSop.title}"`;
+        } else if (apply) {
+          const { fetchGoogleDocHtml } = await import("../googleDrive");
+          const content = await fetchGoogleDocHtml(sopGoogleDocId);
+          const catName = sopCategoryName || "General";
+          const slug = catName.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "general";
+          const catId = await db.getOrCreateSopCategory(catName, slug);
+          sopId = await db.upsertSop({
+            googleDocId: sopGoogleDocId,
+            title: sopTitle || title,
+            content,
+            categoryId: catId,
+            lastUpdated: new Date(),
+          });
+          sopStatus = `imported as SOP #${sopId}`;
+        } else {
+          sopStatus = "would import from Google Doc";
+        }
+      }
+
+      const maxSort = mods.reduce((mx: number, m: any) => Math.max(mx, m.sortOrder ?? 0), 0);
+      if (apply) {
+        const dbc = await db.getDb();
+        const { modules: modulesTable } = await import("../../drizzle/schema");
+        if (!dbc) return res.status(500).json({ error: "no db" });
+        await dbc.insert(modulesTable).values({
+          milestoneId: milestone.id,
+          title,
+          description: description ?? null,
+          type: type ?? "sop",
+          sopId,
+          sortOrder: maxSort + 1,
+          isRequired: true,
+          quizEnabled: false,
+        });
+        const after = await db.getModulesByMilestone(milestone.id);
+        const created = after.find((m: any) => m.title === title);
+        return res.json({ ok: true, status: "created", moduleId: created?.id ?? null, milestone: milestone.title, sortOrder: maxSort + 1, sop: sopStatus });
+      }
+      res.json({ ok: true, status: "would create", milestone: milestone.title, sortOrder: maxSort + 1, sop: sopStatus });
+    } catch (e: any) {
+      console.error("[AddModule] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: list or delete Learning Library rows. Gated by the
   // SETUP_SECRET header. Used to remove stale entries the sync won't prune
   // (a video removed from Drive leaves an orphaned row). Dry run when apply=false.
