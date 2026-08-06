@@ -278,7 +278,7 @@ export async function upsertSop(data: {
     }
     return existing.id;
   } else {
-    const result = await db.insert(sops).values({
+    await db.insert(sops).values({
       categoryId: data.categoryId,
       title: data.title,
       content: data.content,
@@ -288,7 +288,10 @@ export async function upsertSop(data: {
       isActive: true,
       flaggedForReview: false,
     });
-    return Number((result as any).insertId ?? 0);
+    // Re-select rather than trusting insertId (undefined on some MySQL drivers,
+    // which once produced a module pointing at SOP id 0).
+    const created = await getSopByGoogleDocId(data.googleDocId);
+    return created?.id ?? 0;
   }
 }
 
