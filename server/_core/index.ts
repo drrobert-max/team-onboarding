@@ -834,6 +834,10 @@ async function startServer() {
             const nm = newById.get(om.id);
             if (!nm) { missingInNew.push({ id: om.id, title: om.title }); continue; }
             const diffs = FIELDS.filter((f) => s(om[f]) !== s((nm as any)[f]));
+            // Capture both sides' values (truncated) so differences can be
+            // reviewed even after the old database goes away.
+            const values: Record<string, { old: string; new: string }> = {};
+            for (const f of diffs) values[f] = { old: s(om[f]).slice(0, 300), new: s((nm as any)[f]).slice(0, 300) };
             // Quiz content comparison (question text/answers), when the old side had one.
             const oq = oQuizByModule.get(om.id);
             if (oq) {
@@ -842,7 +846,7 @@ async function startServer() {
               if (!nq) diffs.push("quiz (missing in new)" as any);
               else if (qs(oq.questions) !== qs(nq.questions)) diffs.push("quiz questions" as any);
             }
-            if (diffs.length) fieldDiffs.push({ id: om.id, title: om.title, fields: diffs });
+            if (diffs.length) fieldDiffs.push({ id: om.id, title: om.title, fields: diffs, values });
           }
           const addedInNew = newMods
             .filter((m: any) => !oldById.has(m.id))
