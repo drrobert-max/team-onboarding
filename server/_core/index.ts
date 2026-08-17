@@ -768,6 +768,106 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: READ-ONLY diff of training content against the old
+  // (Manus-hosted) database, to certify the migration before that account is
+  // shut down. Gated by the SETUP_SECRET header. The old DB's connection string
+  // is read from the OLD_DB_URL env var — never from the request — so the
+  // credential stays in Railway. Nothing is written to either database.
+  app.post("/api/admin/compare-old-db", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const oldUrl = process.env.OLD_DB_URL;
+    if (!oldUrl) {
+      return res.status(400).json({ ok: false, error: "OLD_DB_URL is not set in Railway. Add it (the old system's mysql:// connection string) and redeploy." });
+    }
+    try {
+      const { teamRoles } = req.body ?? {};
+      const roles: string[] = Array.isArray(teamRoles) && teamRoles.length ? teamRoles : ["ca", "scan_tech"];
+      const db = await import("../db");
+      const mysql = await import("mysql2/promise");
+      const url = new URL(oldUrl.trim());
+      const old = await mysql.createConnection({
+        host: url.hostname, port: Number(url.port) || 3306,
+        user: decodeURIComponent(url.username), password: decodeURIComponent(url.password),
+        database: url.pathname.slice(1),
+        ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true },
+        connectTimeout: 20000,
+      });
+      try {
+        const read = async (t: string) => {
+          const [rows] = await old.query("SELECT * FROM `" + t + "`");
+          return rows as any[];
+        };
+        const oTracks = await read("tracks");
+        const oMs = await read("milestones");
+        const oMods = await read("modules");
+        const oQuiz = await read("quizzes");
+        const oQuizByModule = new Map(oQuiz.map((q: any) => [q.moduleId, q]));
+
+        // Normalize for comparison: trim strings, treat null/empty alike.
+        const s = (v: any) => (v === null || v === undefined ? "" : String(v).trim());
+        const report: any = { ok: true, comparedRoles: roles, tracks: [] };
+
+        for (const role of roles) {
+          const oldTrack = oTracks.find((t: any) => t.teamRole === role);
+          const newTrack = await db.getTrackByRole(role);
+          if (!oldTrack || !newTrack) {
+            report.tracks.push({ role, error: `track missing in ${oldTrack ? "new" : "old"} DB` });
+            continue;
+          }
+          const oldMsIds = new Set(oMs.filter((m: any) => m.trackId === oldTrack.id).map((m: any) => m.id));
+          const oldModsForTrack = oMods.filter((m: any) => oldMsIds.has(m.milestoneId));
+
+          // Current modules for this track, keyed by id.
+          const newMs = await db.getMilestonesByTrack(newTrack.id);
+          const newMods: any[] = [];
+          for (const ms of newMs) newMods.push(...(await db.getModulesByMilestone(ms.id)));
+          const newById = new Map(newMods.map((m: any) => [m.id, m]));
+          const oldById = new Map(oldModsForTrack.map((m: any) => [m.id, m]));
+
+          const missingInNew: any[] = [];
+          const fieldDiffs: any[] = [];
+          const FIELDS = ["title", "description", "type", "loomUrl", "loomUrl2", "loomVideoId", "taskInstructions"] as const;
+          for (const om of oldModsForTrack) {
+            const nm = newById.get(om.id);
+            if (!nm) { missingInNew.push({ id: om.id, title: om.title }); continue; }
+            const diffs = FIELDS.filter((f) => s(om[f]) !== s((nm as any)[f]));
+            // Quiz content comparison (question text/answers), when the old side had one.
+            const oq = oQuizByModule.get(om.id);
+            if (oq) {
+              const nq = await db.getQuizByModuleId(om.id);
+              const qs = (v: any) => { try { return JSON.stringify(typeof v === "string" ? JSON.parse(v) : v); } catch { return String(v); } };
+              if (!nq) diffs.push("quiz (missing in new)" as any);
+              else if (qs(oq.questions) !== qs(nq.questions)) diffs.push("quiz questions" as any);
+            }
+            if (diffs.length) fieldDiffs.push({ id: om.id, title: om.title, fields: diffs });
+          }
+          const addedInNew = newMods
+            .filter((m: any) => !oldById.has(m.id))
+            .map((m: any) => ({ id: m.id, title: m.title }));
+
+          report.tracks.push({
+            role,
+            oldModuleCount: oldModsForTrack.length,
+            newModuleCount: newMods.length,
+            identical: missingInNew.length === 0 && fieldDiffs.length === 0,
+            missingInNew,
+            fieldDiffs,
+            // Modules that exist only in the new hub (intentional additions, e.g. Cherry Payments).
+            addedInNewOnly: addedInNew,
+          });
+        }
+        res.json(report);
+      } finally {
+        try { await old.end(); } catch { /* ignore */ }
+      }
+    } catch (e: any) {
+      console.error("[CompareOldDb] error:", e);
+      res.status(500).json({ ok: false, error: e.code || e.message });
+    }
+  });
   // One-off maintenance: list or delete Learning Library rows. Gated by the
   // SETUP_SECRET header. Used to remove stale entries the sync won't prune
   // (a video removed from Drive leaves an orphaned row). Dry run when apply=false.
