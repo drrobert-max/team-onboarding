@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Clock,
   DatabaseZap,
+  FileSpreadsheet,
   GraduationCap,
   Loader2,
   RefreshCw,
@@ -177,6 +178,29 @@ export default function AdminDashboard() {
               >
                 {syncSops.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 {syncSops.isPending ? "Syncing…" : "Sync now"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Track archive — one-click Excel hard copy of all tracks */}
+        <Card className="mb-6">
+          <CardContent className="py-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground">Track archive (Excel)</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Download a hard copy of every track — all modules, instructions, links, and quizzes — generated fresh from today's content. Keep a copy in Google Drive for safekeeping.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" className="gap-1.5 w-full sm:w-auto" asChild>
+                <a href="/api/admin/tracks-archive.xlsx" download>
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  Download Track Archive
+                </a>
               </Button>
             </div>
           </CardContent>
