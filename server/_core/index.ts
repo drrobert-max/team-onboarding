@@ -768,6 +768,26 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // Admin download: the full track-archive workbook (Excel), generated fresh on
+  // every request so the "hard copy" is always current. Auth: the logged-in
+  // admin's session cookie (this is a browser download link, not a setup tool).
+  app.get("/api/admin/tracks-archive.xlsx", async (req, res) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user || ctx.user.role !== "admin") {
+        return res.status(403).json({ error: "Admin login required" });
+      }
+      const { buildTrackArchive } = await import("../trackArchive");
+      const { buffer, filename } = await buildTrackArchive();
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(buffer);
+    } catch (e: any) {
+      console.error("[TracksArchive] error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
   // One-off maintenance: READ-ONLY export of all training content (tracks →
   // milestones → modules, plus quizzes and SOP titles) for offline archiving.
   // Gated by the SETUP_SECRET header.
