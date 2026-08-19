@@ -768,6 +768,49 @@ async function startServer() {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+  // One-off maintenance: READ-ONLY export of all training content (tracks →
+  // milestones → modules, plus quizzes and SOP titles) for offline archiving.
+  // Gated by the SETUP_SECRET header.
+  app.get("/api/admin/export-tracks", async (req, res) => {
+    const secret = process.env.SETUP_SECRET;
+    if (!secret || req.headers["x-setup-secret"] !== secret) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const db = await import("../db");
+      const sops = await db.getAllSops();
+      const sopTitle = new Map(sops.map((s: any) => [s.id, s.title]));
+      const tracks = await db.getTracks();
+      const out: any[] = [];
+      for (const t of tracks) {
+        const milestones = await db.getMilestonesByTrack(t.id);
+        const ms: any[] = [];
+        for (const m of milestones) {
+          const mods = await db.getModulesByMilestone(m.id);
+          const rows: any[] = [];
+          for (const mod of mods) {
+            const quiz = mod.quizEnabled ? await db.getQuizByModuleId(mod.id) : null;
+            rows.push({
+              id: mod.id, title: mod.title, type: mod.type,
+              description: mod.description, taskInstructions: mod.taskInstructions,
+              loomUrl: mod.loomUrl, loomUrl2: mod.loomUrl2,
+              audioFiles: mod.audioFiles ?? null,
+              sopId: mod.sopId ?? null, sopTitle: mod.sopId ? (sopTitle.get(mod.sopId) ?? null) : null,
+              isRequired: mod.isRequired, quizEnabled: mod.quizEnabled,
+              quiz: quiz ? { passingScore: quiz.passingScore, questions: quiz.questions } : null,
+              sortOrder: mod.sortOrder,
+            });
+          }
+          ms.push({ id: m.id, title: m.title, weekNumber: m.weekNumber, modules: rows });
+        }
+        out.push({ id: t.id, teamRole: t.teamRole, name: t.name, description: t.description, milestones: ms });
+      }
+      res.json({ ok: true, exportedAt: new Date().toISOString(), tracks: out });
+    } catch (e: any) {
+      console.error("[ExportTracks] error:", e);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   // One-off maintenance: READ-ONLY diff of training content against the old
   // (Manus-hosted) database, to certify the migration before that account is
   // shut down. Gated by the SETUP_SECRET header. The old DB's connection string
