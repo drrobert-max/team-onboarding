@@ -236,16 +236,18 @@ async function startServer() {
     }
   });
   // One-off maintenance: build weekly test-out milestones (and their graded
-  // skill modules) into a track, plus optional regular training modules. Gated
-  // by the SETUP_SECRET header. Dry run when apply=false (reports current track
-  // structure + the plan without writing). Idempotent on re-apply.
+  // skill modules) into a track, plus optional regular training modules
+  // (trainingModules) and single graded skills added to a week's existing
+  // test-out (testOutModules). Gated by the SETUP_SECRET header. Dry run when
+  // apply=false (reports current track structure + the plan without writing).
+  // Idempotent on re-apply.
   app.post("/api/admin/build-testouts", async (req, res) => {
     const secret = process.env.SETUP_SECRET;
     if (!secret || req.headers["x-setup-secret"] !== secret) {
       return res.status(404).json({ error: "Not found" });
     }
     try {
-      const { teamRole, weeks, trainingModules, apply } = req.body ?? {};
+      const { teamRole, weeks, trainingModules, testOutModules, apply } = req.body ?? {};
       if (!teamRole || !Array.isArray(weeks)) {
         return res.status(400).json({ error: "teamRole and weeks[] are required" });
       }
@@ -254,6 +256,7 @@ async function startServer() {
         teamRole,
         weeks,
         trainingModules: Array.isArray(trainingModules) ? trainingModules : [],
+        testOutModules: Array.isArray(testOutModules) ? testOutModules : [],
         apply: !!apply,
       });
       res.json({ ok: true, ...result });

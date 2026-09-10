@@ -11,11 +11,20 @@
  *  - Each skill becomes a `task` module inside that milestone, graded
  *    Mastered / Needs improvement.
  *
+ * Three kinds of work, any combination in one call:
+ *  - `weeks`      — build a whole test-out milestone (+ its skills) per week.
+ *  - `trainingModules` — add a regular module to an existing training week.
+ *  - `testOutModules`  — add one graded skill to the test-out for an existing
+ *    week, reusing that week's test-out milestone whatever it is called, and
+ *    creating one *in week order* only when the week has none. Use this to slot
+ *    a single skill into a track whose test-out chain is already built.
+ *
  * Idempotent: re-running skips a milestone that already exists (matched by
  * title) and skips any skill already present in it (matched by title). This
  * means a dry run (apply=false) and a later apply produce the same shape, and
  * re-applying never duplicates.
  */
+import { eq } from "drizzle-orm";
 import * as db from "./db";
 import { milestones as milestonesTable, modules as modulesTable } from "../drizzle/schema";
 
@@ -40,6 +49,36 @@ export interface TrainingModuleSpec {
   type?: "sop" | "video" | "task" | "checklist";
 }
 
+/** A single graded skill to add to the test-out for an existing week. */
+export interface TestOutModuleSpec {
+  week: number;
+  title: string;
+  description?: string;
+  instructions?: string;
+}
+
+/**
+ * Decide where a graded skill for `week` belongs: an existing test-out
+ * milestone for that week, or a new one and the position it takes.
+ *
+ * `ordered` must be the track's milestones in sortOrder — the same order the
+ * /test-outs page unlocks them in. A new test-out therefore goes right after
+ * the last milestone at or before its week, never appended to the end (which
+ * would put Week 7 behind Week 12 in the unlock chain).
+ */
+export function planTestOutSlot(
+  ordered: { id: number; title: string; weekNumber: number }[],
+  week: number,
+): { kind: "existing"; milestoneId: number } | { kind: "create"; index: number } {
+  const match = ordered.find(m => m.weekNumber === week && isTestOut(m.title));
+  if (match) return { kind: "existing", milestoneId: match.id };
+  let index = 0;
+  ordered.forEach((m, i) => {
+    if (m.weekNumber <= week) index = i + 1;
+  });
+  return { kind: "create", index };
+}
+
 const GRADE_NOTE =
   "Demonstrate this live to your supervising doctor during your weekly test-out. " +
   "Graded Mastered / Needs improvement — anything not yet mastered carries forward " +
@@ -49,9 +88,10 @@ export async function runBuildTestOuts(opts: {
   teamRole: string;
   weeks: WeekSpec[];
   trainingModules?: TrainingModuleSpec[];
+  testOutModules?: TestOutModuleSpec[];
   apply: boolean;
 }) {
-  const { teamRole, weeks, trainingModules = [], apply } = opts;
+  const { teamRole, weeks, trainingModules = [], testOutModules = [], apply } = opts;
 
   const track = await db.getTrackByRole(teamRole);
   if (!track) throw new Error(`No training track found for teamRole "${teamRole}"`);
@@ -184,11 +224,85 @@ export async function runBuildTestOuts(opts: {
     });
   }
 
+  // A single graded skill dropped into an existing week's test-out. Unlike
+  // weeks[] (which builds a chain from scratch and appends) this reuses the
+  // week's own test-out whatever it is titled, and when the week has none it
+  // inserts one in week order so the unlock chain stays in sequence.
+  const testOutPlan: any[] = [];
+  if (testOutModules.length) {
+    const current = (await db.getMilestonesByTrack(track.id)).map(m => ({
+      id: m.id,
+      title: m.title,
+      weekNumber: m.weekNumber,
+    }));
+    for (const tm of testOutModules) {
+      const slot = planTestOutSlot(current, tm.week);
+      let milestoneId: number | null = null;
+      let milestoneTitle = `Week ${tm.week} Test Out`;
+      let milestoneStatus: "exists" | "created" | "would create";
+
+      if (slot.kind === "existing") {
+        milestoneId = slot.milestoneId;
+        milestoneTitle = current.find(m => m.id === milestoneId)!.title;
+        milestoneStatus = "exists";
+      } else if (apply) {
+        const [r] = await db2.insert(milestonesTable).values({
+          trackId: track.id,
+          title: milestoneTitle,
+          description: `Weekly test-out for Week ${tm.week}. Each skill is graded Mastered / Needs improvement.`,
+          weekNumber: tm.week,
+          sortOrder: slot.index + 1,
+        });
+        milestoneId = (r as any).insertId as number;
+        current.splice(slot.index, 0, { id: milestoneId, title: milestoneTitle, weekNumber: tm.week });
+        // Renumber the track so the new milestone holds its week's position
+        // rather than landing at the end of the unlock chain.
+        for (let i = 0; i < current.length; i++) {
+          await db2.update(milestonesTable).set({ sortOrder: i + 1 }).where(eq(milestonesTable.id, current[i].id));
+        }
+        milestoneStatus = "created";
+      } else {
+        milestoneStatus = "would create";
+      }
+
+      let status: "exists" | "created" | "would create" = "would create";
+      if (milestoneId) {
+        const mods = await db.getModulesByMilestone(milestoneId);
+        if (mods.some(m => m.title.toLowerCase() === tm.title.toLowerCase())) {
+          status = "exists";
+        } else if (apply) {
+          const maxModSort = mods.reduce((mx, x) => Math.max(mx, x.sortOrder ?? 0), 0);
+          await db2.insert(modulesTable).values({
+            milestoneId,
+            title: tm.title,
+            type: "task",
+            description: tm.description ?? null,
+            taskInstructions: tm.instructions ?? GRADE_NOTE,
+            sortOrder: maxModSort + 1,
+            isRequired: true,
+            quizEnabled: false,
+          });
+          status = "created";
+        }
+      }
+
+      testOutPlan.push({
+        week: tm.week,
+        title: tm.title,
+        status,
+        milestoneId,
+        milestoneTitle,
+        milestoneStatus,
+      });
+    }
+  }
+
   return {
     track: { id: track.id, name: track.name, teamRole: track.teamRole },
     applied: apply,
     currentStructure,
     plan,
     trainingModules: trainingPlan,
+    testOutModules: testOutPlan,
   };
 }
