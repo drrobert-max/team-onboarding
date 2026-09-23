@@ -183,6 +183,13 @@
       "when": 1790175555879,
       "tag": "0025_associate_eos_book",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1790175713480,
+      "tag": "0026_ca_core_values_sop",
+      "breakpoints": true
     }
   ]
 }
