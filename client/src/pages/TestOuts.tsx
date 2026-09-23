@@ -83,7 +83,13 @@ function GradeButtons({
   onGraded: () => void;
 }) {
   const utils = trpc.useUtils();
-  const refresh = () => { utils.grading.getForUser.invalidate({ userId }); onGraded(); };
+  const refresh = () => {
+    utils.grading.getForUser.invalidate({ userId });
+    // Admin Users progress views count mastered test-outs, so refresh them too.
+    utils.users.traineeDetail.invalidate({ userId });
+    utils.users.progressSummary.invalidate();
+    onGraded();
+  };
   const setGrade = trpc.grading.setGrade.useMutation({ onSuccess: refresh });
   const clearGrade = trpc.grading.clearGrade.useMutation({ onSuccess: refresh });
   const busy = setGrade.isPending || clearGrade.isPending;

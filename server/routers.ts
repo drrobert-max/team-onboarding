@@ -245,10 +245,10 @@ const usersRouter = router({
     const allUsers = await db.getAllUsers();
     const approved = allUsers.filter(u => u.approvalStatus === "approved" && u.teamRole);
     const summaries = await Promise.all(approved.map(async (user) => {
-      const progress = await db.getUserProgress(user.id);
-      const completedIds = new Set(progress.filter(p => p.status === "completed").map(p => p.moduleId));
+      const statusOf = await getModuleStatusResolver(user.id);
       const track = user.teamRole ? await db.getTrackByRole(user.teamRole) : null;
       let totalModules = 0;
+      let completed = 0;
       let currentWeek: number | null = null;
       let currentWeekTotal = 0;
       let currentWeekDone = 0;
@@ -257,17 +257,18 @@ const usersRouter = router({
         for (const ms of mss) {
           const mods = await db.getModulesByMilestone(ms.id);
           totalModules += mods.length;
+          const doneHere = mods.filter(m => statusOf(ms, m.id) === "completed").length;
+          completed += doneHere;
           if (currentWeek === null) {
-            const allDone = mods.length > 0 && mods.every(m => completedIds.has(m.id));
+            const allDone = mods.length > 0 && doneHere === mods.length;
             if (!allDone) {
               currentWeek = ms.weekNumber ?? ms.sortOrder;
               currentWeekTotal = mods.length;
-              currentWeekDone = mods.filter(m => completedIds.has(m.id)).length;
+              currentWeekDone = doneHere;
             }
           }
         }
       }
-      const completed = completedIds.size;
       const pct = totalModules > 0 ? Math.round((completed / totalModules) * 100) : 0;
       // Compute effective test-out date (auto-advance weekly)
       let effectiveTestOutDate: Date | null = null;
@@ -309,9 +310,7 @@ const usersRouter = router({
     .query(async ({ input }) => {
       const user = await db.getUserById(input.userId);
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-      const progress = await db.getUserProgress(input.userId);
-      const completedIds = new Set(progress.filter(p => p.status === "completed").map(p => p.moduleId));
-      const inProgressIds = new Set(progress.filter(p => p.status === "in_progress").map(p => p.moduleId));
+      const statusOf = await getModuleStatusResolver(input.userId);
       const track = user.teamRole ? await db.getTrackByRole(user.teamRole) : null;
       const weeks: Array<{
         milestoneId: number;
@@ -328,9 +327,7 @@ const usersRouter = router({
           const moduleList = mods.map(m => ({
             id: m.id,
             title: m.title,
-            status: completedIds.has(m.id) ? "completed" as const
-              : inProgressIds.has(m.id) ? "in_progress" as const
-              : "not_started" as const,
+            status: statusOf(ms, m.id),
           }));
           weeks.push({
             milestoneId: ms.id,
@@ -1237,6 +1234,24 @@ const scheduledRouter = router({
       return { success: true, updated, added };
     }),
 });
+
+// A test-out module counts as done when an admin grades it Mastered (the
+// TestOuts page rule); every other module uses the trainee's own progress.
+// Keeps the admin progress views in sync with the Test Outs tab.
+async function getModuleStatusResolver(userId: number) {
+  const progress = await db.getUserProgress(userId);
+  const completedIds = new Set(progress.filter(p => p.status === "completed").map(p => p.moduleId));
+  const inProgressIds = new Set(progress.filter(p => p.status === "in_progress").map(p => p.moduleId));
+  const grades = await db.getTestOutGradesForUser(userId);
+  const gradeMap = new Map(grades.map(g => [`${g.moduleId}-${g.milestoneId}`, g.grade]));
+  return (ms: { id: number; title: string }, moduleId: number): "completed" | "in_progress" | "not_started" => {
+    if (db.isTestOutTitle(ms.title)) {
+      const g = gradeMap.get(`${moduleId}-${ms.id}`);
+      return g === "mastered" ? "completed" : g === "needs_improvement" ? "in_progress" : "not_started";
+    }
+    return completedIds.has(moduleId) ? "completed" : inProgressIds.has(moduleId) ? "in_progress" : "not_started";
+  };
+}
 
 // ─── Test Out Grades Router ─────────────────────────────────────────────────
 const gradingRouter = router({
