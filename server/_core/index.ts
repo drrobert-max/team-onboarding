@@ -1059,6 +1059,9 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
     registerScheduledJobs(port);
+    import("../ensureCherrySop")
+      .then(({ ensureCherrySop }) => ensureCherrySop())
+      .catch((e) => console.error("[CherrySop] error:", e));
   });
 }
 
