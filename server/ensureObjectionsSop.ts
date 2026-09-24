@@ -2,34 +2,45 @@ import * as db from "./db";
 import { fetchGoogleDocHtml } from "./googleDrive";
 
 // Boot-time data fix: put the "Care Plan Objections: Keeping the First
-// Adjustment" SOP on the CA track. "Begin Learning Objections" gets it as its
-// primary SOP (any previous primary is kept as a Related SOP), and "Proficient
-// at Objections" gets it as a Related SOP. Idempotent — once both modules carry
-// the SOP it does nothing (no fetch, no writes). Safe to delete after it has run.
+// Adjustment" SOP on the modules that teach it.
+// - CA "Begin Learning Objections": primary SOP (any previous primary is kept
+//   as a Related SOP).
+// - CA "Proficient at Objections": Related SOP.
+// - Associate Doctor "Spousal/permission objections — 3-day grace period close":
+//   primary SOP if the module has none, otherwise a Related SOP.
+// Idempotent — once every module carries the SOP it does nothing (no fetch, no
+// writes). Safe to delete after it has run.
 
 const OBJECTIONS_DOC_ID = "1vUXlEwUE15bNvdZ11kiYnOAetVXUuYfnuUh7LUJ72s4";
 const OBJECTIONS_SOP_TITLE = "Care Plan Objections: Keeping the First Adjustment";
 // Same category the weekly Drive sync derives from the doc's folder (Scripts).
 const CATEGORY = { name: "Scripts", slug: "scripts" };
 
-const PRIMARY_TITLE = "begin learning objections";
-const RELATED_TITLE = "proficient at objections";
+const title = (m: any) => (m.title ?? "").trim().toLowerCase();
+const isCaPrimary = (m: any) => title(m) === "begin learning objections";
+const isCaRelated = (m: any) => title(m) === "proficient at objections";
+const isDoctorSpousal = (m: any) => title(m).includes("spousal") && title(m).includes("grace period");
 
-export async function ensureObjectionsSop() {
-  const track = await db.getTrackByRole("ca");
-  if (!track) {
-    console.log("[ObjectionsSop] no CA track — skipping");
-    return;
-  }
+async function trackModules(teamRole: string): Promise<any[]> {
+  const track = await db.getTrackByRole(teamRole);
+  if (!track) return [];
   const mods: any[] = [];
   for (const ms of await db.getMilestonesByTrack(track.id)) {
     mods.push(...(await db.getModulesByMilestone(ms.id)));
   }
-  const title = (m: any) => (m.title ?? "").trim().toLowerCase();
-  const primaryMods = mods.filter((m) => title(m) === PRIMARY_TITLE);
-  const relatedMods = mods.filter((m) => title(m) === RELATED_TITLE);
+  return mods;
+}
+
+export async function ensureObjectionsSop() {
+  const caMods = await trackModules("ca");
+  const doctorMods = await trackModules("associate_doctor");
+  const primaryMods = caMods.filter(isCaPrimary);
+  const relatedMods = caMods.filter(isCaRelated);
+  // Doctor module: primary only when it has no SOP of its own yet.
+  const doctorTargets = doctorMods.filter(isDoctorSpousal);
+  for (const m of doctorTargets) (m.sopId ? relatedMods : primaryMods).push(m);
   if (!primaryMods.length && !relatedMods.length) {
-    console.log("[ObjectionsSop] no matching CA modules — skipping");
+    console.log("[ObjectionsSop] no matching modules — skipping");
     return;
   }
 
@@ -38,7 +49,7 @@ export async function ensureObjectionsSop() {
     const sopId = sop.id;
     const done = primaryMods.every((m) => m.sopId === sopId);
     const linked = await Promise.all(
-      relatedMods.map(async (m) => (await db.getModuleSops(m.id)).some((l: any) => l.id === sopId)),
+      relatedMods.map(async (m) => m.sopId === sopId || (await db.getModuleSops(m.id)).some((l: any) => l.id === sopId)),
     );
     if (done && linked.every(Boolean)) return;
   } else {
@@ -59,6 +70,7 @@ export async function ensureObjectionsSop() {
     console.log(`[ObjectionsSop] module #${m.id} "${m.title}" primary SOP ${m.sopId ?? "none"} -> #${sop.id}`);
   }
   for (const m of relatedMods) {
+    if (m.sopId === sop.id) continue;
     if (await db.linkModuleToSop(m.id, sop.id)) {
       console.log(`[ObjectionsSop] module #${m.id} "${m.title}" linked SOP #${sop.id}`);
     }
