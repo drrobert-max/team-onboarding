@@ -1062,6 +1062,9 @@ async function startServer() {
     import("../ensureCherrySop")
       .then(({ ensureCherrySop }) => ensureCherrySop())
       .catch((e) => console.error("[CherrySop] error:", e));
+    import("../ensureObjectionsSop")
+      .then(({ ensureObjectionsSop }) => ensureObjectionsSop())
+      .catch((e) => console.error("[ObjectionsSop] error:", e));
   });
 }
 
