@@ -5,7 +5,8 @@ import { fetchGoogleDocHtml } from "./googleDrive";
 // Adjustment" SOP on the modules that teach it.
 // - CA "Begin Learning Objections": primary SOP (any previous primary is kept
 //   as a Related SOP).
-// - CA "Proficient at Objections": Related SOP.
+// - Every other CA module with "objection" in its title (e.g. the test-out):
+//   primary SOP if the module has none, otherwise a Related SOP.
 // - Associate Doctor "Spousal/permission objections — 3-day grace period close":
 //   primary SOP if the module has none, otherwise a Related SOP.
 // Idempotent — once every module carries the SOP it does nothing (no fetch, no
@@ -18,7 +19,7 @@ const CATEGORY = { name: "Scripts", slug: "scripts" };
 
 const title = (m: any) => (m.title ?? "").trim().toLowerCase();
 const isCaPrimary = (m: any) => title(m) === "begin learning objections";
-const isCaRelated = (m: any) => title(m) === "proficient at objections";
+const isCaOther = (m: any) => !isCaPrimary(m) && title(m).includes("objection");
 const isDoctorSpousal = (m: any) => title(m).includes("spousal") && title(m).includes("grace period");
 
 async function trackModules(teamRole: string): Promise<any[]> {
@@ -35,14 +36,15 @@ export async function ensureObjectionsSop() {
   const caMods = await trackModules("ca");
   const doctorMods = await trackModules("associate_doctor");
   const primaryMods = caMods.filter(isCaPrimary);
-  const relatedMods = caMods.filter(isCaRelated);
-  // Doctor module: primary only when it has no SOP of its own yet.
-  const doctorTargets = doctorMods.filter(isDoctorSpousal);
-  for (const m of doctorTargets) (m.sopId ? relatedMods : primaryMods).push(m);
-  if (!primaryMods.length && !relatedMods.length) {
-    console.log("[ObjectionsSop] no matching modules — skipping");
-    return;
+  const relatedMods: any[] = [];
+  // Primary only when the module has no SOP of its own yet; never replace one.
+  for (const m of [...caMods.filter(isCaOther), ...doctorMods.filter(isDoctorSpousal)]) {
+    (m.sopId ? relatedMods : primaryMods).push(m);
   }
+  if (!caMods.some((m) => isCaPrimary(m) || isCaOther(m))) {
+    console.log(`[ObjectionsSop] no CA objections module found (CA titles: ${caMods.map((m) => m.title).join(" | ")})`);
+  }
+  if (!primaryMods.length && !relatedMods.length) return;
 
   let sop = await db.getSopByGoogleDocId(OBJECTIONS_DOC_ID);
   if (sop) {
